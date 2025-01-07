@@ -1,33 +1,24 @@
+// main.rs
+
 use crossterm::{
     cursor,
     style::{self, Stylize},
-    terminal, ExecutableCommand, QueueableCommand,
+    terminal::{self, ClearType},
+    ExecutableCommand, QueueableCommand,
 };
 use std::io::{self, Write};
 
-const NUM_PITCH: u16 = 12;
-enum Pitch {
-    Undefined,
-    C,
-    Cs,
-    D,
-    Ds,
-    E,
-    F,
-    Fs,
-    G,
-    Gs,
-    A,
-    As,
-    B,
-}
+mod pitch;
+mod score;
+mod song;
 
-enum Resolution {
-    Time1_4,
-    Time1_8,
-    Time1_16,
-    Time1_32,
-}
+use pitch::Pitch;
+use score::{Note, Resolution, Score};
+use song::create_song;
+
+const NUM_PITCHES: u16 = 12;
+const STAFF_COL_OFFSET: u16 = 4;
+const STAFF_ROW_OFFSET: u16 = 1;
 
 struct ScoreViewport {
     octave: u16,
@@ -35,95 +26,53 @@ struct ScoreViewport {
     bar_idx: u32,
 }
 
-const STAFF_COL_OFFSET: u16 = 4;
-const STAFF_ROW_OFFSET: u16 = 1;
-
-fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport) -> io::Result<()> {
-    // Cols
-    // 0-1:    Pitch
-    // 2:      Octave
-    // 3:      Space
-    // 4:      Staff Start |
-    // 5-N:    Staff - and |
-
-    let resolution_str = match viewport.resolution {
-        Resolution::Time1_4 => "1/4",
-        Resolution::Time1_8 => "1/8",
-        Resolution::Time1_16 => "1/16",
-        Resolution::Time1_32 => "1/32",
-    };
-
-    let bar_length = match viewport.resolution {
-        Resolution::Time1_4 => 4,
-        Resolution::Time1_8 => 8,
-        Resolution::Time1_16 => 16,
-        Resolution::Time1_32 => 32,
-    };
+fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport, score: &Score) -> io::Result<()> {
+    let resolution_str = viewport.resolution.as_str();
+    let bar_length = viewport.resolution.bar_length_in_beats();
 
     stdout
         .queue(cursor::MoveTo(STAFF_COL_OFFSET, 0))?
         .queue(style::Print(resolution_str))?;
 
-    for row in 0..NUM_PITCH {
-        let pitch = match row {
-            0 => Pitch::C,
-            1 => Pitch::Cs,
-            2 => Pitch::D,
-            3 => Pitch::Ds,
-            4 => Pitch::E,
-            5 => Pitch::F,
-            6 => Pitch::Fs,
-            7 => Pitch::G,
-            8 => Pitch::Gs,
-            9 => Pitch::A,
-            10 => Pitch::As,
-            11 => Pitch::B,
-            _ => Pitch::Undefined,
-        };
-
-        let pitch_str = match pitch {
-            Pitch::Undefined => "??",
-            Pitch::C => "C",
-            Pitch::Cs => "C#",
-            Pitch::D => "D",
-            Pitch::Ds => "Ds",
-            Pitch::E => "E",
-            Pitch::F => "F",
-            Pitch::Fs => "F#",
-            Pitch::G => "G",
-            Pitch::Gs => "G#",
-            Pitch::A => "A",
-            Pitch::As => "A#",
-            Pitch::B => "B",
-        };
-        let pitch_str = format!("{pitch_str}{}", viewport.octave);
+    for row in 0..NUM_PITCHES {
+        let pitch = Pitch::from_row_index(row);
+        let pitch_str = format!("{}{}", pitch, viewport.octave);
         stdout
             .queue(cursor::MoveTo(0, row + STAFF_ROW_OFFSET + 1))?
             .queue(style::Print(pitch_str))?;
     }
 
     let (cols, _rows) = terminal::size()?;
-    let mut bar_counter = viewport.bar_idx;
-    for col in STAFF_COL_OFFSET..cols - STAFF_COL_OFFSET - 1 {
-        let bar_marker = if (col - STAFF_COL_OFFSET) % (bar_length + 1) == 0 {
-            bar_counter += 1;
-            format!("{}", bar_counter)
-        } else {
-            "-".to_string()
-        };
+
+    // Draw bar numbers
+    for bar_counter in viewport.bar_idx.. {
+        let col = bar_counter * (bar_length + 1) as u32 + (STAFF_COL_OFFSET as u32);
+        if col + 1 >= cols as u32 {
+            break;
+        }
+        let row = NUM_PITCHES + STAFF_ROW_OFFSET + 1;
         stdout
-            .queue(cursor::MoveTo(col, STAFF_ROW_OFFSET))?
-            .queue(style::Print("-"))?
-            // TODO: Fix - placement on the bottom bar to accomodate numbers with digits  > 1.
-            .queue(cursor::MoveTo(col, NUM_PITCH + STAFF_ROW_OFFSET + 1))?
-            .queue(style::Print(bar_marker))?;
+            .queue(cursor::MoveTo(col as u16, row))?
+            .queue(style::Print(format!("{}", bar_counter)))?;
     }
-    for row in 1 + STAFF_ROW_OFFSET..=NUM_PITCH + STAFF_ROW_OFFSET {
+
+    for row in 1 + STAFF_ROW_OFFSET..=NUM_PITCHES + STAFF_ROW_OFFSET {
+        let mut onset_b32 = viewport.bar_idx as u64 * 32;
+
         for col in STAFF_COL_OFFSET..cols - STAFF_COL_OFFSET - 1 {
             let symbol = if (col - STAFF_COL_OFFSET) % (bar_length + 1) == 0 {
                 "|"
             } else {
-                "-"
+                let pitch = Pitch::from_row_index(row - STAFF_ROW_OFFSET - 1);
+                let has_note =
+                    score.value_at_beat(viewport.resolution, onset_b32, pitch, viewport.octave);
+
+                onset_b32 += viewport.resolution.duration_b32();
+                if has_note {
+                    "X"
+                } else {
+                    "-"
+                }
             };
             stdout
                 .queue(cursor::MoveTo(col, row))?
@@ -135,15 +84,18 @@ fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport) -> io::Result<(
 }
 
 fn main() -> io::Result<()> {
+    // Get the song data from song.rs
+    let score = create_song();
+
     let mut stdout = io::stdout();
-    stdout.execute(terminal::Clear(terminal::ClearType::All))?;
+    stdout.execute(terminal::Clear(ClearType::All))?;
 
     let viewport = ScoreViewport {
-        octave: 3,
-        resolution: Resolution::Time1_4,
+        octave: 4,
+        resolution: Resolution::Time1_8,
         bar_idx: 0,
     };
-    draw_score(&mut stdout, &viewport)?;
+    draw_score(&mut stdout, &viewport, &score)?;
     stdout.queue(style::Print("\n\n"))?;
     stdout.flush()?;
     Ok(())
