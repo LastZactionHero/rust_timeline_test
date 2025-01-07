@@ -60,6 +60,27 @@ impl Score {
         pitch: Pitch,
         octave: u16,
     ) -> bool {
+        // What is the best representation of what is happening at this beat for this resolution...
+        // - Complete beat, entirely fills beat at resolution
+        // - Beat begins at start at resolution, ends later
+        // - Beat fully ends at resolution
+        // - Beat begins at start at resolution, and ends within beat
+        // - Beat begins midway at resolution, ends within beat
+        // - Note is entirely within beat at resolution, but does not start or end it
+        // - Multiple notes𝄻
+
+        // □ ■░▒▓█
+        // ┌ ┐ └ ┘ ─ │ ├ ┤ ┬ ┴ ┼ ═ ║ ╔ ╗ ╚ ╝ ╠ ╣ ╦ ╩ ╬
+
+        // ├───┤
+        // █───█
+
+        // Are we...
+
+        // - At the start of a beat
+        // - At the end of a beat
+        //
+
         let resolution_len = resolution.duration_b32();
         for note in &self.notes {
             if note.pitch == pitch
