@@ -52,14 +52,21 @@ impl Resolution {
     }
 }
 
+pub enum NoteStateAtTime {
+    None,
+    Starting,
+    Middle,
+    Ending,
+}
+
 impl Score {
-    pub fn value_at_beat(
+    pub fn note_state_at_time(
         &self,
         resolution: Resolution,
-        onset_b32: u64,
+        time_b32: u64,
         pitch: Pitch,
         octave: u16,
-    ) -> bool {
+    ) -> NoteStateAtTime {
         // What is the best representation of what is happening at this beat for this resolution...
         // - Complete beat, entirely fills beat at resolution
         // - Beat begins at start at resolution, ends later
@@ -83,14 +90,30 @@ impl Score {
 
         let resolution_len = resolution.duration_b32();
         for note in &self.notes {
-            if note.pitch == pitch
-                && note.octave == octave
-                && onset_b32 + resolution_len > note.onset_b32
-                && onset_b32 < note.onset_b32 + note.duration_b32
+            if note.pitch != pitch
+                || note.octave != octave
+                || time_b32 >= note.onset_b32 + note.duration_b32
+                || time_b32 + resolution_len - 1 < note.onset_b32
             {
-                return true;
+                continue;
             }
+
+            // X-------
+            // ^
+            // time_b32
+            if time_b32 == note.onset_b32 {
+                return NoteStateAtTime::Starting;
+            } else if time_b32 > note.onset_b32
+                && time_b32 < note.onset_b32 + note.duration_b32 - resolution_len
+            {
+                return NoteStateAtTime::Middle;
+            }
+            return NoteStateAtTime::Ending;
+
+            // if time_b32 + resolution_len > note.onset_b32
+            //     && time_b32 < note.onset_b32 + note.duration_b32
+            // {}
         }
-        false
+        NoteStateAtTime::None
     }
 }

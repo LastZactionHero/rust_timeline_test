@@ -8,6 +8,18 @@ pub fn create_song() -> Score {
         bpm: 80,
         notes: vec![
             Note {
+                pitch: Pitch::B,
+                octave: 4,
+                duration_b32: 1,
+                onset_b32: 1,
+            },
+            Note {
+                pitch: Pitch::A,
+                octave: 4,
+                duration_b32: 32,
+                onset_b32: 0,
+            },
+            Note {
                 pitch: Pitch::E,
                 octave: 4,
                 duration_b32: 8,

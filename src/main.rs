@@ -13,7 +13,7 @@ mod score;
 mod song;
 
 use pitch::Pitch;
-use score::{Note, Resolution, Score};
+use score::{Note, NoteStateAtTime, Resolution, Score};
 use song::create_song;
 
 const NUM_PITCHES: u16 = 12;
@@ -64,14 +64,19 @@ fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport, score: &Score) 
                 "|"
             } else {
                 let pitch = Pitch::from_row_index(row - STAFF_ROW_OFFSET - 1);
-                let has_note =
-                    score.value_at_beat(viewport.resolution, onset_b32, pitch, viewport.octave);
+                let note_state = score.note_state_at_time(
+                    viewport.resolution,
+                    onset_b32,
+                    pitch,
+                    viewport.octave,
+                );
 
                 onset_b32 += viewport.resolution.duration_b32();
-                if has_note {
-                    "X"
-                } else {
-                    "-"
+                match note_state {
+                    NoteStateAtTime::None => "-",
+                    NoteStateAtTime::Starting => "├",
+                    NoteStateAtTime::Middle => "─",
+                    NoteStateAtTime::Ending => "┤",
                 }
             };
             stdout
@@ -92,7 +97,7 @@ fn main() -> io::Result<()> {
 
     let viewport = ScoreViewport {
         octave: 4,
-        resolution: Resolution::Time1_8,
+        resolution: Resolution::Time1_4,
         bar_idx: 0,
     };
     draw_score(&mut stdout, &viewport, &score)?;
