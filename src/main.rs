@@ -70,10 +70,16 @@ fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport, score: &Score) 
                     pitch,
                     viewport.octave,
                 );
-
+                // Just keeping these here
+                // □ ■░▒▓█
+                // ┌ ┐ └ ┘ ─ │ ├ ┤ ┬ ┴ ┼ ═ ║ ╔ ╗ ╚ ╝ ╠ ╣ ╦ ╩ ╬
+                // ├───┤
+                // █───█
                 onset_b32 += viewport.resolution.duration_b32();
                 match note_state {
                     NoteStateAtTime::None => "-",
+                    NoteStateAtTime::Complete => "█",
+                    NoteStateAtTime::Enclosed => "▒",
                     NoteStateAtTime::Starting => "├",
                     NoteStateAtTime::Middle => "─",
                     NoteStateAtTime::Ending => "┤",
@@ -97,7 +103,7 @@ fn main() -> io::Result<()> {
 
     let viewport = ScoreViewport {
         octave: 4,
-        resolution: Resolution::Time1_4,
+        resolution: Resolution::Time1_32,
         bar_idx: 0,
     };
     draw_score(&mut stdout, &viewport, &score)?;

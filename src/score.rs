@@ -54,6 +54,8 @@ impl Resolution {
 
 pub enum NoteStateAtTime {
     None,
+    Complete,
+    Enclosed,
     Starting,
     Middle,
     Ending,
@@ -67,27 +69,6 @@ impl Score {
         pitch: Pitch,
         octave: u16,
     ) -> NoteStateAtTime {
-        // What is the best representation of what is happening at this beat for this resolution...
-        // - Complete beat, entirely fills beat at resolution
-        // - Beat begins at start at resolution, ends later
-        // - Beat fully ends at resolution
-        // - Beat begins at start at resolution, and ends within beat
-        // - Beat begins midway at resolution, ends within beat
-        // - Note is entirely within beat at resolution, but does not start or end it
-        // - Multiple notes𝄻
-
-        // □ ■░▒▓█
-        // ┌ ┐ └ ┘ ─ │ ├ ┤ ┬ ┴ ┼ ═ ║ ╔ ╗ ╚ ╝ ╠ ╣ ╦ ╩ ╬
-
-        // ├───┤
-        // █───█
-
-        // Are we...
-
-        // - At the start of a beat
-        // - At the end of a beat
-        //
-
         let resolution_len = resolution.duration_b32();
         for note in &self.notes {
             if note.pitch != pitch
@@ -98,10 +79,15 @@ impl Score {
                 continue;
             }
 
-            // X-------
-            // ^
-            // time_b32
-            if time_b32 == note.onset_b32 {
+            if time_b32 == note.onset_b32
+                && time_b32 + resolution_len == note.onset_b32 + note.duration_b32
+            {
+                return NoteStateAtTime::Complete;
+            } else if time_b32 <= note.onset_b32
+                && time_b32 + resolution_len >= note.onset_b32 + note.duration_b32
+            {
+                return NoteStateAtTime::Enclosed;
+            } else if time_b32 == note.onset_b32 {
                 return NoteStateAtTime::Starting;
             } else if time_b32 > note.onset_b32
                 && time_b32 < note.onset_b32 + note.duration_b32 - resolution_len
@@ -109,10 +95,6 @@ impl Score {
                 return NoteStateAtTime::Middle;
             }
             return NoteStateAtTime::Ending;
-
-            // if time_b32 + resolution_len > note.onset_b32
-            //     && time_b32 < note.onset_b32 + note.duration_b32
-            // {}
         }
         NoteStateAtTime::None
     }
