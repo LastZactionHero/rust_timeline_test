@@ -2,11 +2,16 @@
 
 use crossterm::{
     cursor,
+    event::{poll, read, Event, KeyCode},
+    execute,
     style::{self, Stylize},
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
 };
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    time::Duration,
+};
 
 mod pitch;
 mod score;
@@ -101,7 +106,7 @@ fn main() -> io::Result<()> {
     let mut stdout = io::stdout();
     stdout.execute(terminal::Clear(ClearType::All))?;
 
-    let viewport = ScoreViewport {
+    let mut viewport = ScoreViewport {
         octave: 4,
         resolution: Resolution::Time1_32,
         bar_idx: 0,
@@ -109,5 +114,36 @@ fn main() -> io::Result<()> {
     draw_score(&mut stdout, &viewport, &score)?;
     stdout.queue(style::Print("\n\n"))?;
     stdout.flush()?;
+
+    crossterm::terminal::enable_raw_mode()?;
+    // execute!(std::io::stdout());
+    loop {
+        if poll(Duration::from_millis(500))? {
+            match read()? {
+                Event::Key(event) => match event.code {
+                    KeyCode::Char('q') => break,
+                    KeyCode::Up => {
+                        viewport.octave += 1;
+                        draw_score(&mut stdout, &viewport, &score);
+                    }
+                    KeyCode::Down => {
+                        viewport.octave -= 1;
+                        draw_score(&mut stdout, &viewport, &score);
+                    }
+                    KeyCode::Right => {
+                        viewport.bar_idx += 1;
+                        draw_score(&mut stdout, &viewport, &score);
+                    }
+                    KeyCode::Left => {
+                        viewport.bar_idx -= 1;
+                        draw_score(&mut stdout, &viewport, &score);
+                    }
+                    _ => println!("{:?}\r", event),
+                },
+                _ => (),
+            }
+        }
+    }
+    crossterm::terminal::disable_raw_mode();
     Ok(())
 }
