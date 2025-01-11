@@ -50,6 +50,24 @@ impl Resolution {
             Resolution::Time1_32 => 1,
         }
     }
+
+    pub fn next_down(&self) -> Resolution {
+        match self {
+            Resolution::Time1_32 => Resolution::Time1_16,
+            Resolution::Time1_16 => Resolution::Time1_8,
+            Resolution::Time1_8 => Resolution::Time1_4,
+            Resolution::Time1_4 => Resolution::Time1_4,
+        }
+    }
+
+    pub fn next_up(&self) -> Resolution {
+        match self {
+            Resolution::Time1_4 => Resolution::Time1_8,
+            Resolution::Time1_8 => Resolution::Time1_16,
+            Resolution::Time1_16 => Resolution::Time1_32,
+            Resolution::Time1_32 => Resolution::Time1_32,
+        }
+    }
 }
 
 pub enum NoteStateAtTime {

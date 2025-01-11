@@ -2,6 +2,9 @@
 
 use std::fmt;
 
+pub static OCTAVE_MIN: u16 = 0;
+pub static OCTAVE_MAX: u16 = 8;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Pitch {
     C,

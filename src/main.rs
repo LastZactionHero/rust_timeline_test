@@ -10,6 +10,7 @@ use crossterm::{
 };
 use std::{
     io::{self, Write},
+    ops::BitAnd,
     time::Duration,
 };
 
@@ -32,7 +33,7 @@ struct ScoreViewport {
 }
 
 fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport, score: &Score) -> io::Result<()> {
-    let resolution_str = viewport.resolution.as_str();
+    let resolution_str = format!("{} ", viewport.resolution.as_str());
     let bar_length = viewport.resolution.bar_length_in_beats();
 
     stdout
@@ -50,7 +51,15 @@ fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport, score: &Score) 
     let (cols, _rows) = terminal::size()?;
 
     // Draw bar numbers
-    for bar_counter in viewport.bar_idx.. {
+    for col in 0..cols - 1 {
+        stdout
+            .queue(cursor::MoveTo(
+                col as u16,
+                NUM_PITCHES + STAFF_ROW_OFFSET + 1,
+            ))?
+            .queue(style::Print(" "))?;
+    }
+    for bar_counter in 0.. {
         let col = bar_counter * (bar_length + 1) as u32 + (STAFF_COL_OFFSET as u32);
         if col + 1 >= cols as u32 {
             break;
@@ -58,7 +67,7 @@ fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport, score: &Score) 
         let row = NUM_PITCHES + STAFF_ROW_OFFSET + 1;
         stdout
             .queue(cursor::MoveTo(col as u16, row))?
-            .queue(style::Print(format!("{}", bar_counter)))?;
+            .queue(style::Print(format!("{}", bar_counter + viewport.bar_idx)))?;
     }
 
     for row in 1 + STAFF_ROW_OFFSET..=NUM_PITCHES + STAFF_ROW_OFFSET {
@@ -95,6 +104,7 @@ fn draw_score(stdout: &mut io::Stdout, viewport: &ScoreViewport, score: &Score) 
                 .queue(style::Print(symbol))?;
         }
     }
+    stdout.flush()?;
 
     Ok(())
 }
@@ -116,34 +126,46 @@ fn main() -> io::Result<()> {
     stdout.flush()?;
 
     crossterm::terminal::enable_raw_mode()?;
-    // execute!(std::io::stdout());
     loop {
         if poll(Duration::from_millis(500))? {
-            match read()? {
-                Event::Key(event) => match event.code {
+            if let Event::Key(event) = read()? {
+                match event.code {
                     KeyCode::Char('q') => break,
                     KeyCode::Up => {
-                        viewport.octave += 1;
-                        draw_score(&mut stdout, &viewport, &score);
+                        if viewport.octave < pitch::OCTAVE_MAX {
+                            viewport.octave += 1;
+                            draw_score(&mut stdout, &viewport, &score)?;
+                        }
                     }
                     KeyCode::Down => {
-                        viewport.octave -= 1;
-                        draw_score(&mut stdout, &viewport, &score);
+                        if viewport.octave > pitch::OCTAVE_MIN {
+                            viewport.octave -= 1;
+                            draw_score(&mut stdout, &viewport, &score)?;
+                        }
                     }
                     KeyCode::Right => {
                         viewport.bar_idx += 1;
-                        draw_score(&mut stdout, &viewport, &score);
+                        draw_score(&mut stdout, &viewport, &score)?;
                     }
                     KeyCode::Left => {
-                        viewport.bar_idx -= 1;
-                        draw_score(&mut stdout, &viewport, &score);
+                        if viewport.bar_idx > 0 {
+                            viewport.bar_idx -= 1;
+                            draw_score(&mut stdout, &viewport, &score)?;
+                        }
                     }
-                    _ => println!("{:?}\r", event),
-                },
-                _ => (),
+                    KeyCode::Char(']') => {
+                        viewport.resolution = viewport.resolution.next_up();
+                        draw_score(&mut stdout, &viewport, &score)?;
+                    }
+                    KeyCode::Char('[') => {
+                        viewport.resolution = viewport.resolution.next_down();
+                        draw_score(&mut stdout, &viewport, &score)?;
+                    }
+                    _ => println!("{event:?}\r"),
+                }
             }
         }
     }
-    crossterm::terminal::disable_raw_mode();
+    crossterm::terminal::disable_raw_mode()?;
     Ok(())
 }
