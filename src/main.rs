@@ -13,16 +13,19 @@ use std::{
 
 mod draw_score;
 mod pitch;
+mod player;
 mod score;
 mod song;
 
 use draw_score::{draw_score, ScoreViewport};
+use player::Player;
 use score::Resolution;
 use song::create_song;
 
 fn main() -> io::Result<()> {
     // Get the song data from song.rs
     let score = create_song();
+    let mut player = Player::create(&score, 44100);
 
     let mut stdout = io::stdout();
     stdout.execute(terminal::Clear(ClearType::All))?;
@@ -70,6 +73,10 @@ fn main() -> io::Result<()> {
                     }
                     KeyCode::Char('[') => {
                         viewport.resolution = viewport.resolution.next_down();
+                        draw_score(&mut stdout, &viewport, &score)?;
+                    }
+                    KeyCode::Char(' ') => {
+                        player.toggle_playback();
                         draw_score(&mut stdout, &viewport, &score)?;
                     }
                     _ => println!("{event:?}\r"),

@@ -1,8 +1,10 @@
 // score.rs
 
+use std::f32::MAX;
+
 use crate::pitch::Pitch;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Note {
     pub pitch: Pitch,
     pub octave: u16,
@@ -115,5 +117,26 @@ impl Score {
             return NoteStateAtTime::Ending;
         }
         NoteStateAtTime::None
+    }
+
+    pub fn active_notes_at_time(&self, time_b32: u64) -> Vec<Note> {
+        let mut active_notes = vec![];
+        for note in &self.notes {
+            if time_b32 >= note.onset_b32 && time_b32 < note.onset_b32 + note.duration_b32 {
+                active_notes.push(*note);
+            }
+        }
+        active_notes
+    }
+
+    pub fn time_within_song(&self, time_b32: u64) -> bool {
+        let mut max_end_time = 0;
+        for note in &self.notes {
+            let end_time = note.onset_b32 + note.duration_b32;
+            if end_time > max_end_time {
+                max_end_time = end_time;
+            }
+        }
+        time_b32 <= max_end_time
     }
 }
