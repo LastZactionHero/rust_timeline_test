@@ -20,6 +20,32 @@ pub struct ScoreViewport {
     pub bar_idx: u32,
 }
 
+impl ScoreViewport {
+    pub fn set_octave(&self, octave: u16) -> ScoreViewport {
+        ScoreViewport {
+            octave,
+            resolution: self.resolution,
+            bar_idx: self.bar_idx,
+        }
+    }
+
+    pub fn set_resolution(&self, resolution: Resolution) -> ScoreViewport {
+        ScoreViewport {
+            octave: self.octave,
+            resolution,
+            bar_idx: self.bar_idx,
+        }
+    }
+
+    pub fn set_bar_idx(&self, bar_idx: u32) -> ScoreViewport {
+        ScoreViewport {
+            octave: self.octave,
+            resolution: self.resolution,
+            bar_idx,
+        }
+    }
+}
+
 pub fn draw_score(
     stdout: &mut io::Stdout,
     viewport: &ScoreViewport,
