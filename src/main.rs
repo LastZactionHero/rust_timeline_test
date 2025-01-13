@@ -1,5 +1,6 @@
 // main.rs
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossterm::{
     event::{poll, read, Event, KeyCode},
     style::{self},
@@ -17,11 +18,13 @@ mod draw_score;
 mod pitch;
 mod player;
 mod score;
+mod sin_wave;
 mod song;
 
 use draw_score::{draw_score, ScoreViewport};
 use player::Player;
 use score::Resolution;
+use sin_wave::SinWave;
 use song::create_song;
 
 fn main() -> io::Result<()> {
@@ -45,6 +48,9 @@ fn main() -> io::Result<()> {
 
     let capture_input_handle = thread::spawn(move || {
         let _ = capture_input(tx);
+    });
+    let audio_out_handle = thread::spawn(move || {
+        let _ = audio_player();
     });
 
     loop {
@@ -89,6 +95,7 @@ fn main() -> io::Result<()> {
         }
     }
     capture_input_handle.join().unwrap();
+    audio_out_handle.join().unwrap();
     Ok(())
 }
 
@@ -123,4 +130,37 @@ fn capture_input(tx: mpsc::Sender<InputEvent>) -> io::Result<()> {
     }
     crossterm::terminal::disable_raw_mode()?;
     Ok(())
+}
+
+fn audio_player() -> Result<(), Box<dyn std::error::Error>> {
+    let mut wave = SinWave::new(440.0);
+    let host = cpal::default_host();
+    let device = host
+        .default_output_device()
+        .expect("Did not find default output device");
+    let config = device.default_output_config().unwrap();
+
+    let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+    let stream_config: cpal::StreamConfig = config.into();
+
+    let stream = device.build_output_stream(
+        &stream_config,
+        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| write_data(data, 2, &mut wave),
+        err_fn,
+        None,
+    )?;
+    stream.play()?;
+
+    std::thread::sleep(std::time::Duration::from_millis(5000));
+    // println!("played a note\r");
+    Ok(())
+}
+
+fn write_data(output: &mut [f32], channels: usize, next_sample: &mut dyn Iterator<Item = f64>) {
+    for frame in output.chunks_mut(channels) {
+        let sample = next_sample.next().unwrap();
+        for s in frame.iter_mut() {
+            *s = sample as f32;
+        }
+    }
 }

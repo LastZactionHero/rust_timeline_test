@@ -1,11 +1,11 @@
-
-struct SinWave {
+use std::f64::consts::PI;
+pub struct SinWave {
     hz: f64,
     t: u64,
 }
 
 impl SinWave {
-    fn new(hz: f64) -> Self {
+    pub fn new(hz: f64) -> Self {
         SinWave { hz, t: 0 }
     }
 }
