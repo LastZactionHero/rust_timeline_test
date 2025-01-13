@@ -32,7 +32,7 @@ fn main() -> io::Result<()> {
     let mut stdout = io::stdout();
     stdout.execute(terminal::Clear(ClearType::All))?;
 
-    let viewport = ScoreViewport {
+    let mut viewport = ScoreViewport {
         octave: 4,
         resolution: Resolution::Time1_32,
         bar_idx: 0,
@@ -44,7 +44,7 @@ fn main() -> io::Result<()> {
     let (tx, rx) = mpsc::channel();
 
     let capture_input_handle = thread::spawn(move || {
-        let _ = capture_input(tx, &viewport);
+        let _ = capture_input(tx);
     });
 
     loop {
@@ -52,12 +52,35 @@ fn main() -> io::Result<()> {
             Ok(msg) => {
                 println!("got a message!\r");
                 match msg {
-                    InputEvent::UpdateViewport(viewport) => {
-                        draw_score(&mut stdout, &viewport, &score).unwrap();
+                    InputEvent::ViewerOctaveIncrease => {
+                        if viewport.octave < pitch::OCTAVE_MAX {
+                            viewport = viewport.set_octave(viewport.octave + 1);
+                        }
                     }
-                    InputEvent::TogglePlayback => player.toggle_playback(),
+                    InputEvent::ViewerOctaveDecrease => {
+                        if viewport.octave > pitch::OCTAVE_MIN {
+                            viewport = viewport.set_octave(viewport.octave - 1);
+                        }
+                    }
+                    InputEvent::ViewerBarNext => {
+                        viewport = viewport.set_bar_idx(viewport.bar_idx + 1);
+                    }
+                    InputEvent::ViewerBarPrevious => {
+                        if viewport.bar_idx > 0 {
+                            viewport = viewport.set_bar_idx(viewport.bar_idx - 1);
+                        }
+                    }
+                    InputEvent::ViewerResolutionIncrease => {
+                        viewport = viewport.set_resolution(viewport.resolution.next_up());
+                    }
+                    InputEvent::ViewerResolutionDecrease => {
+                        viewport = viewport.set_resolution(viewport.resolution.next_down());
+                    }
+                    InputEvent::PlayerTogglePlayback => {
+                        player.toggle_playback();
+                    }
                 }
-                // let _ = play_note(msg);
+                draw_score(&mut stdout, &viewport, &score)?;
             }
             Err(e) => {
                 eprintln!("Oh no!: {}", e);
@@ -66,112 +89,33 @@ fn main() -> io::Result<()> {
         }
     }
     capture_input_handle.join().unwrap();
-    // let (tx, rx) = mpsc::channel();
-
-    // crossterm::terminal::enable_raw_mode()?;
-    // loop {
-    //     if poll(Duration::from_millis(500))? {
-    //         if let Event::Key(event) = read()? {
-    //             match event.code {
-    //                 KeyCode::Char('q') => break,
-    //                 KeyCode::Up => {
-    //                     if viewport.octave < pitch::OCTAVE_MAX {
-    //                         viewport.octave += 1;
-    //                         draw_score(&mut stdout, &viewport, &score)?;
-    //                     }
-    //                 }
-    //                 KeyCode::Down => {
-    //                     if viewport.octave > pitch::OCTAVE_MIN {
-    //                         viewport.octave -= 1;
-    //                         draw_score(&mut stdout, &viewport, &score)?;
-    //                     }
-    //                 }
-    //                 KeyCode::Right => {
-    //                     viewport.bar_idx += 1;
-    //                     draw_score(&mut stdout, &viewport, &score)?;
-    //                 }
-    //                 KeyCode::Left => {
-    //                     if viewport.bar_idx > 0 {
-    //                         viewport.bar_idx -= 1;
-    //                         draw_score(&mut stdout, &viewport, &score)?;
-    //                     }
-    //                 }
-    //                 KeyCode::Char(']') => {
-    //                     viewport.resolution = viewport.resolution.next_up();
-    //                     draw_score(&mut stdout, &viewport, &score)?;
-    //                 }
-    //                 KeyCode::Char('[') => {
-    //                     viewport.resolution = viewport.resolution.next_down();
-    //                     draw_score(&mut stdout, &viewport, &score)?;
-    //                 }
-    //                 KeyCode::Char(' ') => {
-    //                     player.toggle_playback();
-    //                     draw_score(&mut stdout, &viewport, &score)?;
-    //                 }
-    //                 _ => println!("{event:?}\r"),
-    //             }
-    //         }
-    //     }
-    // }
-    // crossterm::terminal::disable_raw_mode()?;
     Ok(())
 }
 
 enum InputEvent {
-    UpdateViewport(ScoreViewport),
-    TogglePlayback,
+    ViewerOctaveIncrease,
+    ViewerOctaveDecrease,
+    ViewerBarNext,
+    ViewerBarPrevious,
+    ViewerResolutionIncrease,
+    ViewerResolutionDecrease,
+    PlayerTogglePlayback,
 }
 
-fn capture_input(tx: mpsc::Sender<InputEvent>, viewport: &ScoreViewport) -> io::Result<()> {
+fn capture_input(tx: mpsc::Sender<InputEvent>) -> io::Result<()> {
     crossterm::terminal::enable_raw_mode()?;
     loop {
         if poll(Duration::from_millis(500))? {
             if let Event::Key(event) = read()? {
                 match event.code {
                     KeyCode::Char('q') => break,
-                    KeyCode::Up => {
-                        if viewport.octave < pitch::OCTAVE_MAX {
-                            tx.send(InputEvent::UpdateViewport(
-                                viewport.set_octave(viewport.octave + 1),
-                            ))
-                            .unwrap();
-                        }
-                    }
-                    KeyCode::Down => {
-                        if viewport.octave > pitch::OCTAVE_MIN {
-                            tx.send(InputEvent::UpdateViewport(
-                                viewport.set_octave(viewport.octave - 1),
-                            ))
-                            .unwrap();
-                        }
-                    }
-                    KeyCode::Right => {
-                        tx.send(InputEvent::UpdateViewport(
-                            viewport.set_bar_idx(viewport.bar_idx + 1),
-                        ))
-                        .unwrap();
-                    }
-                    KeyCode::Left => {
-                        if viewport.bar_idx > 0 {
-                            tx.send(InputEvent::UpdateViewport(
-                                viewport.set_bar_idx(viewport.bar_idx - 1),
-                            ))
-                            .unwrap();
-                        }
-                    }
-                    KeyCode::Char(']') => {
-                        tx.send(InputEvent::UpdateViewport(
-                            viewport.set_resolution(viewport.resolution.next_up()),
-                        ))
-                        .unwrap();
-                    }
-                    KeyCode::Char('[') => {
-                        tx.send(InputEvent::UpdateViewport(
-                            viewport.set_resolution(viewport.resolution.next_down()),
-                        ))
-                        .unwrap();
-                    }
-                    KeyCode::Char(' ') => tx.send(InputEvent::TogglePlayback).unwrap(),
+                    KeyCode::Up => tx.send(InputEvent::ViewerOctaveIncrease).unwrap(),
+                    KeyCode::Down => tx.send(InputEvent::ViewerOctaveDecrease).unwrap(),
+                    KeyCode::Left => tx.send(InputEvent::ViewerBarPrevious).unwrap(),
+                    KeyCode::Right => tx.send(InputEvent::ViewerBarNext).unwrap(),
+                    KeyCode::Char('[') => tx.send(InputEvent::ViewerResolutionDecrease).unwrap(),
+                    KeyCode::Char(']') => tx.send(InputEvent::ViewerResolutionIncrease).unwrap(),
+                    KeyCode::Char(' ') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
                     _ => println!("{event:?}\r"),
                 }
             }
