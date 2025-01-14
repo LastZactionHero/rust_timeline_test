@@ -1,5 +1,4 @@
 // main.rs
-
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossterm::{
     event::{poll, read, Event, KeyCode},
@@ -7,7 +6,7 @@ use crossterm::{
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
 };
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::{
     io::{self, Write},
@@ -23,14 +22,17 @@ mod song;
 
 use draw_score::{draw_score, ScoreViewport};
 use player::Player;
-use score::Resolution;
+use score::{Resolution, Score};
 use sin_wave::SinWave;
 use song::create_song;
 
 fn main() -> io::Result<()> {
     // Get the song data from song.rs
     let score = create_song();
-    let mut player = Player::create(&score, 44100);
+    // Make score 'static
+    let score: &'static Score = Box::leak(Box::new(score));
+    let player = Player::create(score, 44100);
+    let shared_player = Arc::new(Mutex::new(player));
 
     let mut stdout = io::stdout();
     stdout.execute(terminal::Clear(ClearType::All))?;
@@ -49,8 +51,10 @@ fn main() -> io::Result<()> {
     let capture_input_handle = thread::spawn(move || {
         let _ = capture_input(tx);
     });
+
+    let audio_shared_player = Arc::clone(&shared_player);
     let audio_out_handle = thread::spawn(move || {
-        let _ = audio_player();
+        let _ = audio_player(audio_shared_player);
     });
 
     loop {
@@ -83,7 +87,8 @@ fn main() -> io::Result<()> {
                         viewport = viewport.set_resolution(viewport.resolution.next_down());
                     }
                     InputEvent::PlayerTogglePlayback => {
-                        player.toggle_playback();
+                        let mut player_guard = shared_player.lock().unwrap();
+                        player_guard.toggle_playback();
                     }
                 }
                 draw_score(&mut stdout, &viewport, &score)?;
@@ -132,8 +137,7 @@ fn capture_input(tx: mpsc::Sender<InputEvent>) -> io::Result<()> {
     Ok(())
 }
 
-fn audio_player() -> Result<(), Box<dyn std::error::Error>> {
-    let mut wave = SinWave::new(440.0);
+fn audio_player(player: Arc<Mutex<Player>>) -> Result<(), Box<dyn std::error::Error>> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -142,25 +146,31 @@ fn audio_player() -> Result<(), Box<dyn std::error::Error>> {
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
     let stream_config: cpal::StreamConfig = config.into();
+    let sample_rate = stream_config.sample_rate.0 as f64;
+    let channels = stream_config.channels as usize;
 
+    let player_clone = player.clone(); // Clone the Arc for the stream closure
     let stream = device.build_output_stream(
         &stream_config,
-        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| write_data(data, 2, &mut wave),
+        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            write_data(data, channels, player_clone.clone()) // Clone again for each call
+        },
         err_fn,
         None,
     )?;
     stream.play()?;
 
-    std::thread::sleep(std::time::Duration::from_millis(5000));
-    // println!("played a note\r");
-    Ok(())
+    // Keep the thread alive, and keep `player` alive:
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(5000));
+    }
 }
 
-fn write_data(output: &mut [f32], channels: usize, next_sample: &mut dyn Iterator<Item = f64>) {
+fn write_data(output: &mut [f32], channels: usize, player: Arc<Mutex<Player>>) {
     for frame in output.chunks_mut(channels) {
-        let sample = next_sample.next().unwrap();
+        let sample = player.lock().unwrap().next().unwrap() as f32;
         for s in frame.iter_mut() {
-            *s = sample as f32;
+            *s = sample;
         }
     }
 }
