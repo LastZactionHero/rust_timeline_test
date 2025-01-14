@@ -82,7 +82,7 @@ impl Iterator for Player {
 
         let mut total_amplitudes: f64 = 0.0;
         for frequency in &self.active_frequencies {
-            total_amplitudes += (2.0 * PI * frequency * (self.tick as f64) / 44000.0).sin();
+            total_amplitudes += (2.0 * PI * frequency * (self.tick as f64) / 44100.0).sin();
         }
 
         Some(total_amplitudes / self.active_frequencies.len() as f64)
