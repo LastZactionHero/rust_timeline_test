@@ -1,6 +1,7 @@
 use crate::score::{Note, Score};
 use std::f64::consts::PI;
 
+#[derive(PartialEq)]
 enum PlayState {
     Stopped,
     Playing,
@@ -38,6 +39,7 @@ impl Player {
     pub fn stop(&mut self) {
         self.play_state = PlayState::Stopped;
         self.time_b32 = 0;
+        self.tick = 0;
     }
 
     pub fn toggle_playback(&mut self) {
@@ -52,6 +54,10 @@ impl Iterator for Player {
     type Item = f64;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.play_state == PlayState::Stopped {
+            return Some(0.0);
+        }
+
         if self.tick == 0 || self.tick % 1378 == 0 {
             if self.score.time_within_song(self.time_b32) {
                 self.active_frequencies = self
@@ -62,6 +68,7 @@ impl Iterator for Player {
                     .collect();
             } else {
                 self.active_frequencies = vec![];
+                self.stop();
             }
         }
         if self.tick != 0 && self.tick % 1378 == 0 {

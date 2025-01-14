@@ -23,7 +23,6 @@ mod song;
 use draw_score::{draw_score, ScoreViewport};
 use player::Player;
 use score::{Resolution, Score};
-use sin_wave::SinWave;
 use song::create_song;
 
 fn main() -> io::Result<()> {
@@ -42,14 +41,14 @@ fn main() -> io::Result<()> {
         resolution: Resolution::Time1_32,
         bar_idx: 0,
     };
-    draw_score(&mut stdout, &viewport, &score)?;
+    draw_score(&mut stdout, &viewport, score)?;
     stdout.queue(style::Print("\n\n"))?;
     stdout.flush()?;
 
     let (tx, rx) = mpsc::channel();
 
     let capture_input_handle = thread::spawn(move || {
-        let _ = capture_input(tx);
+        let _ = capture_input(&tx);
     });
 
     let audio_shared_player = Arc::clone(&shared_player);
@@ -91,7 +90,7 @@ fn main() -> io::Result<()> {
                         player_guard.toggle_playback();
                     }
                 }
-                draw_score(&mut stdout, &viewport, &score)?;
+                draw_score(&mut stdout, &viewport, score)?;
             }
             Err(e) => {
                 eprintln!("Oh no!: {}", e);
@@ -114,7 +113,7 @@ enum InputEvent {
     PlayerTogglePlayback,
 }
 
-fn capture_input(tx: mpsc::Sender<InputEvent>) -> io::Result<()> {
+fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
     crossterm::terminal::enable_raw_mode()?;
     loop {
         if poll(Duration::from_millis(500))? {
@@ -162,7 +161,7 @@ fn audio_player(player: Arc<Mutex<Player>>) -> Result<(), Box<dyn std::error::Er
 
     // Keep the thread alive, and keep `player` alive:
     loop {
-        std::thread::sleep(std::time::Duration::from_millis(5000));
+        std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 }
 
