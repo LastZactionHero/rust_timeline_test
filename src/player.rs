@@ -1,4 +1,5 @@
-use crate::score::{Note, Score};
+use crate::score::Score;
+use crate::score_player::ScorePlayer;
 use std::f64::consts::PI;
 
 #[derive(PartialEq)]
@@ -8,22 +9,20 @@ enum PlayState {
 }
 
 pub struct Player {
-    pub score: &'static Score,
     pub sample_rate: u64,
+    score_player: ScorePlayer,
     play_state: PlayState,
     tick: u64,
-    time_b32: u64,
     active_frequencies: Vec<f64>,
 }
 
 impl Player {
     pub fn create(score: &'static Score, sample_rate: u64) -> Player {
         Player {
-            score,
             sample_rate,
+            score_player: ScorePlayer::create(score),
             play_state: PlayState::Stopped,
             tick: 0,
-            time_b32: 0,
             active_frequencies: vec![],
         }
     }
@@ -38,8 +37,8 @@ impl Player {
 
     pub fn stop(&mut self) {
         self.play_state = PlayState::Stopped;
-        self.time_b32 = 0;
         self.tick = 0;
+        self.score_player.reset();
     }
 
     pub fn toggle_playback(&mut self) {
@@ -58,21 +57,17 @@ impl Iterator for Player {
             return Some(0.0);
         }
 
-        if self.tick == 0 || self.tick % 1378 == 0 {
-            if self.score.time_within_song(self.time_b32) {
-                self.active_frequencies = self
-                    .score
-                    .active_notes_at_time(self.time_b32)
+        if self.tick == 0 || self.tick % (self.sample_rate / 32) == 0 {
+            self.active_frequencies = match self.score_player.next() {
+                Some(notes) => notes
                     .iter()
                     .map(|note| note.pitch.frequency(note.octave))
-                    .collect();
-            } else {
-                self.active_frequencies = vec![];
-                self.stop();
+                    .collect(),
+                None => {
+                    self.stop();
+                    vec![]
+                }
             }
-        }
-        if self.tick != 0 && self.tick % 1378 == 0 {
-            self.time_b32 += 1;
         }
         self.tick += 1;
 
@@ -82,7 +77,8 @@ impl Iterator for Player {
 
         let mut total_amplitudes: f64 = 0.0;
         for frequency in &self.active_frequencies {
-            total_amplitudes += (2.0 * PI * frequency * (self.tick as f64) / 44100.0).sin();
+            total_amplitudes +=
+                (2.0 * PI * frequency * (self.tick as f64) / (self.sample_rate as f64)).sin();
         }
 
         Some(total_amplitudes / self.active_frequencies.len() as f64)

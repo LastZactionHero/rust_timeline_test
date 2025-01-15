@@ -17,6 +17,7 @@ mod draw_score;
 mod pitch;
 mod player;
 mod score;
+mod score_player;
 mod sin_wave;
 mod song;
 
