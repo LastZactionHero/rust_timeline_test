@@ -6,7 +6,9 @@ use crossterm::{
     ExecutableCommand, QueueableCommand,
 };
 
-use crate::draw_component::{BoxDrawComponent, DrawComponent, NullComponent, Position, Window};
+use crate::draw_component::{
+    self, BoxDrawComponent, DrawComponent, NullComponent, Position, Window,
+};
 use std::io::{self};
 
 pub struct AppState {}
@@ -27,10 +29,12 @@ impl AppState {
         let mut stdout = io::stdout();
         stdout.execute(terminal::Clear(ClearType::All))?;
 
-        let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(
-            Box::new(NullComponent {}),
-            Box::new(NullComponent {}),
-        ))]);
+        let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(Box::new(
+            draw_component::VSplitDrawComponent::new(
+                Box::new(draw_component::FillComponent { value: 'X' }),
+                Box::new(draw_component::FillComponent { value: '0' }),
+            ),
+        )))]);
         let position = Position {
             x: 0,
             y: 0,
