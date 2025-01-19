@@ -1,12 +1,10 @@
 // pitch.rs
 
 use std::fmt;
-
-pub static OCTAVE_MIN: u16 = 0;
 pub static OCTAVE_MAX: u16 = 8;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Pitch {
+pub enum Tone {
     C,
     Cs,
     D,
@@ -21,70 +19,149 @@ pub enum Pitch {
     B,
 }
 
-impl Pitch {
+impl Tone {
+    pub fn from_index(index: u16) -> Tone {
+        match index {
+            0 => Tone::C,
+            1 => Tone::Cs,
+            2 => Tone::D,
+            3 => Tone::Ds,
+            4 => Tone::E,
+            5 => Tone::F,
+            6 => Tone::Fs,
+            7 => Tone::G,
+            8 => Tone::Gs,
+            9 => Tone::A,
+            10 => Tone::As,
+            11 => Tone::B,
+            _ => panic!("Invalid tone index!"),
+        }
+    }
+    pub fn index(&self) -> u16 {
+        match self {
+            Tone::C => 0,
+            Tone::Cs => 1,
+            Tone::D => 2,
+            Tone::Ds => 3,
+            Tone::E => 4,
+            Tone::F => 5,
+            Tone::Fs => 6,
+            Tone::G => 7,
+            Tone::Gs => 8,
+            Tone::A => 9,
+            Tone::As => 10,
+            Tone::B => 11,
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         match self {
-            Pitch::C => "C",
-            Pitch::Cs => "C#",
-            Pitch::D => "D",
-            Pitch::Ds => "D#",
-            Pitch::E => "E",
-            Pitch::F => "F",
-            Pitch::Fs => "F#",
-            Pitch::G => "G",
-            Pitch::Gs => "G#",
-            Pitch::A => "A",
-            Pitch::As => "A#",
-            Pitch::B => "B",
+            Tone::C => "C",
+            Tone::Cs => "C#",
+            Tone::D => "D",
+            Tone::Ds => "D#",
+            Tone::E => "E",
+            Tone::F => "F",
+            Tone::Fs => "F#",
+            Tone::G => "G",
+            Tone::Gs => "G#",
+            Tone::A => "A",
+            Tone::As => "A#",
+            Tone::B => "B",
         }
     }
+}
 
-    pub fn row_index(&self) -> u16 {
-        match self {
-            Pitch::C => 0,
-            Pitch::Cs => 1,
-            Pitch::D => 2,
-            Pitch::Ds => 3,
-            Pitch::E => 4,
-            Pitch::F => 5,
-            Pitch::Fs => 6,
-            Pitch::G => 7,
-            Pitch::Gs => 8,
-            Pitch::A => 9,
-            Pitch::As => 10,
-            Pitch::B => 11,
-        }
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Pitch {
+    pub tone: Tone,
+    pub octave: u16,
+}
+
+impl Pitch {
+    pub fn new(tone: Tone, octave: u16) -> Pitch {
+        Pitch { tone, octave }
     }
 
-    pub fn from_row_index(row: u16) -> Pitch {
-        match row {
-            0 => Pitch::C,
-            1 => Pitch::Cs,
-            2 => Pitch::D,
-            3 => Pitch::Ds,
-            4 => Pitch::E,
-            5 => Pitch::F,
-            6 => Pitch::Fs,
-            7 => Pitch::G,
-            8 => Pitch::Gs,
-            9 => Pitch::A,
-            10 => Pitch::As,
-            11 => Pitch::B,
-            _ => panic!("Invalid row index for pitch: {}", row),
+    pub fn all() -> Vec<Pitch> {
+        let mut pitches = vec![];
+        for octave in 0..=OCTAVE_MAX {
+            pitches.push(Pitch::new(Tone::C, octave));
+            pitches.push(Pitch::new(Tone::Cs, octave));
+            pitches.push(Pitch::new(Tone::D, octave));
+            pitches.push(Pitch::new(Tone::Ds, octave));
+            pitches.push(Pitch::new(Tone::E, octave));
+            pitches.push(Pitch::new(Tone::F, octave));
+            pitches.push(Pitch::new(Tone::Fs, octave));
+            pitches.push(Pitch::new(Tone::G, octave));
+            pitches.push(Pitch::new(Tone::Gs, octave));
+            pitches.push(Pitch::new(Tone::A, octave));
+            pitches.push(Pitch::new(Tone::As, octave));
+            pitches.push(Pitch::new(Tone::B, octave));
         }
+        pitches
     }
 
-    pub fn frequency(&self, octave: u16) -> f64 {
-        // Calculate the number of half steps from A4 (440 Hz)
-        let half_steps_from_a4 = (octave as i32 - 4) * 12 + self.row_index() as i32 - 9;
+    pub fn next(&self) -> Option<Pitch> {
+        if self.tone == Tone::B && self.octave == OCTAVE_MAX {
+            return None;
+        }
+        if self.tone == Tone::B {
+            return Some(Pitch::new(Tone::C, self.octave + 1));
+        }
+        Some(Pitch::new(
+            Tone::from_index(self.tone.index() + 1),
+            self.octave,
+        ))
+    }
 
-        // Calculate the frequency using the formula: 440 * 2^(n/12)
-        440.0 * 2_f64.powf(half_steps_from_a4 as f64 / 12.0)
+    pub fn prev(&self) -> Option<Pitch> {
+        if self.tone == Tone::C && self.octave == 0 {
+            return None;
+        }
+        if self.tone == Tone::C {
+            return Some(Pitch::new(Tone::B, self.octave - 1));
+        }
+        Some(Pitch::new(
+            Tone::from_index(self.tone.index() - 1),
+            self.octave,
+        ))
+    }
+    //
+    //
+    // pub fn from_row_index(row: u16) -> Pitch {
+    //     match row {
+    //         0 => Pitch::C,
+    //         1 => Pitch::Cs,
+    //         2 => Pitch::D,
+    //         3 => Pitch::Ds,
+    //         4 => Pitch::E,
+    //         5 => Pitch::F,
+    //         6 => Pitch::Fs,
+    //         7 => Pitch::G,
+    //         8 => Pitch::Gs,
+    //         9 => Pitch::A,
+    //         10 => Pitch::As,
+    //         11 => Pitch::B,
+    //         _ => panic!("Invalid row index for pitch: {}", row),
+    //     }
+    // }
+
+    // pub fn frequency(&self, octave: u16) -> f64 {
+    //     // Calculate the number of half steps from A4 (440 Hz)
+    //     let half_steps_from_a4 = (octave as i32 - 4) * 12 + self.row_index() as i32 - 9;
+
+    //     // Calculate the frequency using the formula: 440 * 2^(n/12)
+    //     440.0 * 2_f64.powf(half_steps_from_a4 as f64 / 12.0)
+    // }
+    //
+    pub fn as_str(&self) -> String {
+        format!("{}{}", self.tone.as_str(), self.octave)
     }
 }
 
 impl fmt::Display for Pitch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        write!(f, "{}{}", self.tone.as_str(), self.octave)
     }
 }

@@ -1,3 +1,5 @@
+use crate::score::Score;
+use crate::song::create_song;
 use crossterm::{
     cursor::{self},
     event::{poll, read, Event, KeyCode},
@@ -6,14 +8,21 @@ use crossterm::{
     ExecutableCommand, QueueableCommand,
 };
 
-use crate::draw_component::{
-    self, BoxDrawComponent, DrawComponent, NullComponent, Position, Window,
+use crate::draw_components::{
+    self, score_draw_component::ScoreDrawComponent, BoxDrawComponent, DrawComponent, NullComponent,
+    Position, Window,
 };
 use std::io::{self};
 
-pub struct AppState {}
+pub struct AppState {
+    score: &'static Score,
+}
 
 impl AppState {
+    pub fn new(score: &'static Score) -> AppState {
+        AppState { score }
+    }
+
     pub fn run(&self) -> io::Result<()> {
         println!("Hello from App State!");
         self.draw()?;
@@ -30,9 +39,9 @@ impl AppState {
         stdout.execute(terminal::Clear(ClearType::All))?;
 
         let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(Box::new(
-            draw_component::VSplitDrawComponent::new(
-                Box::new(draw_component::FillComponent { value: 'X' }),
-                Box::new(draw_component::FillComponent { value: '0' }),
+            draw_components::VSplitDrawComponent::new(
+                Box::new(ScoreDrawComponent::new(self.score)),
+                Box::new(draw_components::FillComponent { value: '0' }),
             ),
         )))]);
         let position = Position {

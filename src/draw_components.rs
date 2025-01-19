@@ -1,11 +1,28 @@
-const BOX_TOP_LEFT: char = '╔';
-const BOX_TOP_RIGHT: char = '╗';
-const BOX_BOTTOM_LEFT: char = '╚';
-const BOX_BOTTOM_RIGHT: char = '╝';
-const BOX_HORIZONTAL: char = '═';
-const BOX_VERTICAL: char = '║';
-const BOX_RIGHT_DIVIDER: char = '╣';
-const BOX_LEFT_DIVIDER: char = '╠';
+pub mod score_draw_component;
+
+pub trait DrawComponent {
+    fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &Position);
+
+    fn wb(&self, buffer: &mut Vec<Vec<char>>, pos: &Position, x: usize, y: usize, value: char) {
+        buffer[pos.y + y][pos.x + x] = value;
+    }
+
+    fn wb_string(
+        &self,
+        buffer: &mut Vec<Vec<char>>,
+        pos: &Position,
+        x: usize,
+        y: usize,
+        value: String,
+    ) {
+        for (i, char) in value.char_indices() {
+            if pos.x + x + i >= buffer[pos.y].len() {
+                break;
+            }
+            buffer[pos.y + y][pos.x + x + i] = char;
+        }
+    }
+}
 
 pub struct Position {
     pub x: usize,
@@ -24,13 +41,14 @@ impl Position {
     }
 }
 
-pub trait DrawComponent {
-    fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &Position);
-
-    fn wb(&self, buffer: &mut Vec<Vec<char>>, pos: &Position, x: usize, y: usize, value: char) {
-        buffer[pos.y + y][pos.x + x] = value;
-    }
-}
+const BOX_TOP_LEFT: char = '╔';
+const BOX_TOP_RIGHT: char = '╗';
+const BOX_BOTTOM_LEFT: char = '╚';
+const BOX_BOTTOM_RIGHT: char = '╝';
+const BOX_HORIZONTAL: char = '═';
+const BOX_VERTICAL: char = '║';
+const BOX_RIGHT_DIVIDER: char = '╣';
+const BOX_LEFT_DIVIDER: char = '╠';
 
 pub struct Window {
     components: Vec<Box<dyn DrawComponent>>,

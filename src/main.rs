@@ -14,7 +14,7 @@ use std::{
 };
 
 mod app_state;
-mod draw_component;
+mod draw_components;
 mod draw_score;
 mod pitch;
 mod player;
@@ -23,18 +23,18 @@ mod sin_wave;
 mod song;
 
 use app_state::AppState;
-use draw_score::{draw_score, ScoreViewport};
-use player::Player;
-use score::{Resolution, Score};
+// use draw_score::{draw_score, ScoreViewport};
+// use player::Player;
+use score::Score;
 use song::create_song;
 
 fn main() -> io::Result<()> {
-    let app_state = AppState {};
+    let score = create_song();
+    let score: &'static Score = Box::leak(Box::new(score));
+
+    let app_state = AppState::new(score);
     app_state.run()?;
-    // // Get the song data from song.rs
-    // let score = create_song();
-    // // Make score 'static
-    // let score: &'static Score = Box::leak(Box::new(score));
+    //
     // let player = Player::create(score, 44100);
     // let shared_player = Arc::new(Mutex::new(player));
 
