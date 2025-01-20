@@ -147,14 +147,14 @@ impl Pitch {
     //     }
     // }
 
-    // pub fn frequency(&self, octave: u16) -> f64 {
-    //     // Calculate the number of half steps from A4 (440 Hz)
-    //     let half_steps_from_a4 = (octave as i32 - 4) * 12 + self.row_index() as i32 - 9;
+    pub fn frequency(&self, octave: u16) -> f64 {
+        // Calculate the number of half steps from A4 (440 Hz)
+        let half_steps_from_a4 = (octave as i32 - 4) * 12 + self.tone.index() as i32 - 9;
 
-    //     // Calculate the frequency using the formula: 440 * 2^(n/12)
-    //     440.0 * 2_f64.powf(half_steps_from_a4 as f64 / 12.0)
-    // }
-    //
+        // Calculate the frequency using the formula: 440 * 2^(n/12)
+        440.0 * 2_f64.powf(half_steps_from_a4 as f64 / 12.0)
+    }
+
     pub fn as_str(&self) -> String {
         format!("{}{}", self.tone.as_str(), self.octave)
     }

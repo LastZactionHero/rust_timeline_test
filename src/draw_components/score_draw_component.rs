@@ -69,9 +69,9 @@ impl Resolution {
 
 #[derive(Clone, Copy)]
 pub struct ScoreViewport {
-    middle_pitch: Pitch,
-    resolution: Resolution,
-    time_point: u64,
+    pub middle_pitch: Pitch,
+    pub resolution: Resolution,
+    pub time_point: u64,
 }
 
 impl ScoreViewport {
