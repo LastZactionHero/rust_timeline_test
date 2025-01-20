@@ -3,7 +3,7 @@
 use std::fmt;
 pub static OCTAVE_MAX: u16 = 8;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Tone {
     C,
     Cs,
@@ -72,7 +72,7 @@ impl Tone {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Pitch {
     pub tone: Tone,
     pub octave: u16,

@@ -1,3 +1,4 @@
+use crate::pitch::{Pitch, Tone};
 use crate::score::Score;
 use crate::song::create_song;
 use crossterm::{
@@ -9,18 +10,23 @@ use crossterm::{
 };
 
 use crate::draw_components::{
-    self, score_draw_component::ScoreDrawComponent, BoxDrawComponent, DrawComponent, NullComponent,
-    Position, Window,
+    self,
+    score_draw_component::{Resolution, ScoreDrawComponent, ScoreViewport},
+    BoxDrawComponent, DrawComponent, NullComponent, Position, Window,
 };
 use std::io::{self};
 
 pub struct AppState {
     score: &'static Score,
+    score_viewport: ScoreViewport,
 }
 
 impl AppState {
     pub fn new(score: &'static Score) -> AppState {
-        AppState { score }
+        AppState {
+            score,
+            score_viewport: ScoreViewport::new(Pitch::new(Tone::C, 4), Resolution::Time1_16, 0),
+        }
     }
 
     pub fn run(&self) -> io::Result<()> {
@@ -40,7 +46,10 @@ impl AppState {
 
         let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(Box::new(
             draw_components::VSplitDrawComponent::new(
-                Box::new(ScoreDrawComponent::new(self.score)),
+                Box::new(ScoreDrawComponent::new(
+                    self.score,
+                    self.score_viewport.clone(),
+                )),
                 Box::new(draw_components::FillComponent { value: '0' }),
             ),
         )))]);

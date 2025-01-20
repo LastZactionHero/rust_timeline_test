@@ -7,6 +7,7 @@ use crate::pitch::Pitch;
 #[derive(Debug, Clone, Copy)]
 pub struct Note {
     pub pitch: Pitch,
+    pub onset_b32: u64,
     pub duration_b32: u64,
 }
 
@@ -17,6 +18,14 @@ pub struct Score {
 }
 
 impl Score {
+    pub fn notes_starting_at_time(&self, onset_b32: u64) -> Vec<Note> {
+        self.notes
+            .get(&onset_b32)
+            .unwrap_or(&vec![])
+            .iter()
+            .map(|note| note.clone())
+            .collect()
+    }
     // pub fn note_state_at_time(
     //     &self,
     //     resolution: Resolution,
