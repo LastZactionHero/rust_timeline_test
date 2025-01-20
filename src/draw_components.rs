@@ -15,7 +15,7 @@ pub trait DrawComponent {
         y: usize,
         value: String,
     ) {
-        for (i, char) in value.char_indices() {
+        for (i, char) in value.chars().enumerate() {
             if pos.x + x + i >= buffer[pos.y].len() {
                 break;
             }

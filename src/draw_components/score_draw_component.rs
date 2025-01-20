@@ -173,8 +173,18 @@ impl ScoreDrawComponent {
 
     fn note_string(&self, note: &Note, time_point: u64, resolution: &Resolution) -> String {
         let mut note_str = String::new();
-        for i in 0..std::cmp::max(1, note.duration_b32 / resolution.duration_b32()) {
-            note_str.push_str("O");
+        let note_len_chars = std::cmp::max(1, note.duration_b32 / resolution.duration_b32());
+        for i in 0..note_len_chars {
+            let note_char =
+                if i == (note_len_chars - 1) && time_point == note.onset_b32 && note_len_chars == 1
+                {
+                    '▉'
+                } else if i == 0 {
+                    '█'
+                } else {
+                    '▒'
+                };
+            note_str.push(note_char);
         }
         note_str
     }
