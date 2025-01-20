@@ -13,7 +13,7 @@ pub struct Note {
 pub struct Score {
     pub bpm: u16,
     // TODO: This needs to be a vector of notes
-    pub notes: HashMap<u64, Note>,
+    pub notes: HashMap<u64, Vec<Note>>,
 }
 
 impl Score {
