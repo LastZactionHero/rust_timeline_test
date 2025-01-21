@@ -92,20 +92,20 @@ impl AppState {
                     match msg {
                         InputEvent::Quit => break,
                         InputEvent::ViewerOctaveIncrease => {
-                            if self.score_viewport.middle_pitch.octave < 8 {
-                                self.score_viewport.middle_pitch.octave += 1;
+                            if let Some(next_pitch) = self.score_viewport.middle_pitch.next() {
+                                self.score_viewport.middle_pitch = next_pitch;
                             }
                         }
                         InputEvent::ViewerOctaveDecrease => {
-                            if self.score_viewport.middle_pitch.octave > 0 {
-                                self.score_viewport.middle_pitch.octave -= 1;
+                            if let Some(prev_pitch) = self.score_viewport.middle_pitch.prev() {
+                                self.score_viewport.middle_pitch = prev_pitch;
                             }
                         }
                         InputEvent::ViewerBarNext => {
                             self.score_viewport.time_point += 1;
                         }
                         InputEvent::ViewerBarPrevious => {
-                            if self.score_viewport.time_point > 1 {
+                            if self.score_viewport.time_point > 0 {
                                 self.score_viewport.time_point -= 1;
                             }
                         }

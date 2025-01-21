@@ -110,7 +110,7 @@ impl ScoreDrawComponent {
     fn visible_pitches(&self, pos: &Position) -> Vec<Pitch> {
         let num_pitches_to_display = pos.h - 1;
 
-        let middle_pitch = Pitch::new(Tone::C, 4);
+        let middle_pitch = self.score_viewport.middle_pitch;
         let mut pitches = vec![middle_pitch];
         for _ in 0..(num_pitches_to_display / 2) {
             if let Some(prev_pitch) = pitches.last().unwrap().prev() {
