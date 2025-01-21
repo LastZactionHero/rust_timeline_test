@@ -102,11 +102,11 @@ impl AppState {
                             }
                         }
                         InputEvent::ViewerBarNext => {
-                            self.score_viewport.time_point += 1;
+                            self.score_viewport.time_point += 32;
                         }
                         InputEvent::ViewerBarPrevious => {
                             if self.score_viewport.time_point > 0 {
-                                self.score_viewport.time_point -= 1;
+                                self.score_viewport.time_point -= 32;
                             }
                         }
                         InputEvent::ViewerResolutionIncrease => {
@@ -146,7 +146,7 @@ impl AppState {
                     self.score,
                     self.score_viewport.clone(),
                 )),
-                Box::new(draw_components::FillComponent { value: '0' }),
+                Box::new(draw_components::NullComponent {}),
             ),
         )))]);
 
