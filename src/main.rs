@@ -3,6 +3,7 @@ use std::io;
 mod app_state;
 mod draw_components;
 mod draw_score;
+mod events;
 mod pitch;
 mod player;
 mod score;

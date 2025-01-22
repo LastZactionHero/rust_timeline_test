@@ -19,20 +19,10 @@ use crate::draw_components::{
     score_draw_component::{Resolution, ScoreDrawComponent, ScoreViewport},
     BoxDrawComponent, DrawComponent, NullComponent, Position, Window,
 };
+use crate::events::InputEvent;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
 use crate::score::Score;
-
-pub enum InputEvent {
-    ViewerOctaveIncrease,
-    ViewerOctaveDecrease,
-    ViewerBarNext,
-    ViewerBarPrevious,
-    ViewerResolutionIncrease,
-    ViewerResolutionDecrease,
-    PlayerTogglePlayback,
-    Quit,
-}
 
 pub struct AppState {
     score: &'static Score,
@@ -46,13 +36,14 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(score: &'static Score) -> AppState {
+        let (tx, rx) = mpsc::channel();
+
         let player = Player::create(score, 44100);
         let shared_player = Arc::new(Mutex::new(player));
-        let (tx, rx) = mpsc::channel();
 
         AppState {
             score,
-            score_viewport: ScoreViewport::new(Pitch::new(Tone::C, 4), Resolution::Time1_16, 0),
+            score_viewport: ScoreViewport::new(Pitch::new(Tone::C, 4), Resolution::Time1_16, 0, 0),
             player: shared_player,
             input_tx: tx,
             input_rx: rx,
@@ -73,9 +64,10 @@ impl AppState {
         }));
 
         // Start audio thread
+        let player_tx = self.input_tx.clone();
         let player = Arc::clone(&self.player);
         self.audio_thread = Some(thread::spawn(move || {
-            let _ = Self::audio_player(player);
+            let _ = Self::audio_player(player, player_tx.clone());
         }));
 
         // Main loop
@@ -121,6 +113,14 @@ impl AppState {
                             let mut player_guard = self.player.lock().unwrap();
                             player_guard.toggle_playback();
                         }
+                        InputEvent::PlayerBeatChange(playback_time_point_b32) => {
+                            self.score_viewport.playback_time_point = playback_time_point_b32;
+                        }
+                        InputEvent::PlayheadOutOfViewport => {
+                            self.score_viewport.time_point =
+                                self.score_viewport.playback_time_point
+                                    - self.score_viewport.playback_time_point % 32;
+                        }
                     }
                     self.draw()?;
                 }
@@ -145,6 +145,7 @@ impl AppState {
                 Box::new(ScoreDrawComponent::new(
                     self.score,
                     self.score_viewport.clone(),
+                    self.input_tx.clone(),
                 )),
                 Box::new(draw_components::NullComponent {}),
             ),
@@ -199,7 +200,10 @@ impl AppState {
         Ok(())
     }
 
-    fn audio_player(player: Arc<Mutex<Player>>) -> Result<(), Box<dyn std::error::Error>> {
+    fn audio_player(
+        player: Arc<Mutex<Player>>,
+        tx: mpsc::Sender<InputEvent>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -214,7 +218,7 @@ impl AppState {
         let stream = device.build_output_stream(
             &stream_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                Self::write_data(data, channels, player_clone.clone())
+                Self::write_data(data, channels, player_clone.clone(), tx.clone())
             },
             err_fn,
             None,
@@ -226,9 +230,20 @@ impl AppState {
         }
     }
 
-    fn write_data(output: &mut [f32], channels: usize, player: Arc<Mutex<Player>>) {
+    fn write_data(
+        output: &mut [f32],
+        channels: usize,
+        player: Arc<Mutex<Player>>,
+        tx: mpsc::Sender<InputEvent>,
+    ) {
+        let mut time_b32 = player.lock().unwrap().current_time_b32();
         for frame in output.chunks_mut(channels) {
             let sample = player.lock().unwrap().next().unwrap() as f32;
+            let next_time_b32 = player.lock().unwrap().current_time_b32();
+            if next_time_b32 != time_b32 {
+                time_b32 = next_time_b32;
+                tx.send(InputEvent::PlayerBeatChange(time_b32)).unwrap();
+            }
             for s in frame.iter_mut() {
                 *s = sample;
             }

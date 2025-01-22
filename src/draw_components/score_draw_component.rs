@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::Index;
+use std::sync::mpsc;
 
 use super::DrawComponent;
 use crate::draw_components::Position;
+use crate::events::InputEvent;
 use crate::pitch::{self, Pitch, Tone};
 use crate::score::{Note, Score};
 
 pub struct ScoreDrawComponent {
     score: &'static Score,
     score_viewport: ScoreViewport,
+    event_tx: mpsc::Sender<InputEvent>,
 }
 
 #[derive(Clone, Copy)]
@@ -72,14 +75,21 @@ pub struct ScoreViewport {
     pub middle_pitch: Pitch,
     pub resolution: Resolution,
     pub time_point: u64,
+    pub playback_time_point: u64,
 }
 
 impl ScoreViewport {
-    pub fn new(middle_pitch: Pitch, resolution: Resolution, time_point: u64) -> ScoreViewport {
+    pub fn new(
+        middle_pitch: Pitch,
+        resolution: Resolution,
+        time_point: u64,
+        playback_time_point: u64,
+    ) -> ScoreViewport {
         ScoreViewport {
             middle_pitch,
             resolution,
             time_point,
+            playback_time_point,
         }
     }
 }
@@ -100,10 +110,15 @@ impl DrawComponent for ScoreDrawComponent {
 }
 
 impl ScoreDrawComponent {
-    pub fn new(score: &'static Score, score_viewport: ScoreViewport) -> ScoreDrawComponent {
+    pub fn new(
+        score: &'static Score,
+        score_viewport: ScoreViewport,
+        tx: mpsc::Sender<InputEvent>,
+    ) -> ScoreDrawComponent {
         ScoreDrawComponent {
             score,
             score_viewport,
+            event_tx: tx,
         }
     }
 
@@ -138,6 +153,7 @@ impl ScoreDrawComponent {
             }
         }
 
+        let mut playhead_in_view = false;
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
@@ -149,19 +165,44 @@ impl ScoreDrawComponent {
                     .collect();
 
                 for (row, pitch) in pitches.iter().enumerate() {
-                    if let Some(note) = active_notes.get(pitch) {
-                        self.wb_string(
-                            buffer,
-                            pos,
-                            col,
-                            row,
-                            self.note_string(note, time_point, &self.score_viewport.resolution),
-                        );
+                    // if let Some(note) = active_notes.get(pitch) {
+                    //     self.wb_string(
+                    //         buffer,
+                    //         pos,
+                    //         col,
+                    //         row,
+                    //         self.note_string(note, time_point, &self.score_viewport.resolution),
+                    //     );
+                    // } else if time_point == self.score_viewport.playback_time_point {
+                    //     self.wb(buffer, pos, col, row, 'X');
+                    // }
+                    match active_notes.get(pitch) {
+                        Some(note) => {
+                            self.wb_string(
+                                buffer,
+                                pos,
+                                col,
+                                row,
+                                self.note_string(note, time_point, &self.score_viewport.resolution),
+                            );
+                        }
+                        None => {
+                            if time_point == self.score_viewport.playback_time_point {
+                                self.wb(buffer, pos, col, row, 'X');
+                            }
+                        }
                     }
                 }
-
+                if time_point == self.score_viewport.playback_time_point {
+                    playhead_in_view = true;
+                }
                 time_point += 1;
             }
+        }
+        if !playhead_in_view {
+            self.event_tx
+                .send(InputEvent::PlayheadOutOfViewport)
+                .unwrap();
         }
     }
 
