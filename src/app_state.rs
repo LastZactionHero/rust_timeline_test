@@ -7,6 +7,10 @@ use crossterm::{
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
 };
+use crossterm::{
+    execute,
+    terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
+};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::{
@@ -32,6 +36,7 @@ pub struct AppState {
     input_rx: mpsc::Receiver<InputEvent>,
     input_thread: Option<JoinHandle<()>>,
     audio_thread: Option<JoinHandle<()>>,
+    buffer: Option<Vec<Vec<char>>>,
 }
 
 impl AppState {
@@ -49,6 +54,7 @@ impl AppState {
             input_rx: rx,
             input_thread: None,
             audio_thread: None,
+            buffer: None,
         }
     }
 
@@ -133,12 +139,14 @@ impl AppState {
         Ok(())
     }
 
-    fn draw(&self) -> io::Result<()> {
+    fn draw(&mut self) -> io::Result<()> {
         let (width, height) = terminal::size()?;
         let mut buffer = vec![vec![' '; width as usize]; height as usize];
 
         let mut stdout = io::stdout();
-        stdout.execute(terminal::Clear(ClearType::All))?;
+        if self.buffer.is_none() {
+            stdout.execute(terminal::Clear(ClearType::All))?;
+        }
 
         let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(Box::new(
             draw_components::VSplitDrawComponent::new(
@@ -160,13 +168,21 @@ impl AppState {
         base_component.draw(&mut buffer, &position);
 
         for y in 0..height {
+            for x in 0..width {
+                let char = buffer[y as usize][x as usize];
+                if self.buffer.is_none()
+                    || char != self.buffer.as_ref().unwrap()[y as usize][x as usize]
+                {
+                    stdout
+                        .queue(cursor::MoveTo(x, y))?
+                        .queue(style::Print(char))?;
+                }
+            }
             let row: String = buffer[y as usize].clone().into_iter().collect();
-            stdout
-                .queue(cursor::MoveTo(0, y))?
-                .queue(style::Print(row))?;
         }
         stdout.flush()?;
 
+        self.buffer = Some(buffer);
         Ok(())
     }
 
