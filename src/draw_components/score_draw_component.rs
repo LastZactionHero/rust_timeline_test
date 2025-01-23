@@ -152,8 +152,21 @@ impl ScoreDrawComponent {
         for col in 0..pos.w - 1 {
             let bar_col = col % (self.score_viewport.resolution.bar_length_in_beats()) == 0;
             for (row, _pitch) in pitches.iter().enumerate() {
-                let draw_char = if bar_col { '-' } else { '.' };
+                let draw_char = if bar_col { '⎸' } else { '.' };
                 self.wb(buffer, pos, col, row, draw_char);
+            }
+
+            if bar_col {
+                self.wb_string(
+                    buffer,
+                    pos,
+                    col,
+                    pitches.len(),
+                    ((col as u64 + self.score_viewport.time_point)
+                        / (self.score_viewport.resolution.bar_length_in_beats() as u64)
+                        + 1)
+                    .to_string(),
+                );
             }
         }
 
