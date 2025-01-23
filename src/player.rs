@@ -1,6 +1,7 @@
 use crate::score::{Note, Score};
 use std::collections::HashMap;
 use std::f64::consts::PI;
+use std::sync::{Arc, Mutex};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PlayState {
@@ -10,7 +11,7 @@ pub enum PlayState {
 }
 
 pub struct Player {
-    score: &'static Score,
+    score: Arc<Mutex<Score>>,
     sample_rate: u64,
     state: PlayState,
     tick: u64,
@@ -20,11 +21,11 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn create(score: &'static Score, sample_rate: u64) -> Player {
+    pub fn create(score: Arc<Mutex<Score>>, sample_rate: u64) -> Player {
         // Calculate ticks per b32 based on sample rate
         // For 120 BPM: 44100 samples/sec * 60 sec/min / 120 beats/min / 32 subdivisions = 689.0625 samples/b32
         // Rounding to 689 samples per b32 unit
-        let ticks_per_b32 = (sample_rate * 60 / score.bpm as u64) / 32;
+        let ticks_per_b32 = (sample_rate * 60 / score.lock().unwrap().bpm as u64) / 32;
 
         Player {
             score,
@@ -65,7 +66,11 @@ impl Player {
 
     fn update_active_notes(&mut self) {
         // Get notes starting at current time
-        let new_notes = self.score.notes_starting_at_time(self.time_b32);
+        let new_notes = self
+            .score
+            .lock()
+            .unwrap()
+            .notes_starting_at_time(self.time_b32);
 
         // Remove finished notes and add new ones
         self.active_notes
@@ -84,7 +89,7 @@ impl Iterator for Player {
 
         // Update notes when we hit a new b32 boundary
         if self.tick % self.ticks_per_b32 == 0 {
-            if self.score.time_within_song(self.time_b32) {
+            if self.score.lock().unwrap().time_within_song(self.time_b32) {
                 self.update_active_notes();
             } else {
                 self.active_notes.clear();

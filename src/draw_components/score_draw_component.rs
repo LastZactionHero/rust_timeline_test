@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::Index;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 
 use super::DrawComponent;
 use crate::draw_components::Position;
@@ -10,7 +10,7 @@ use crate::pitch::{self, Pitch, Tone};
 use crate::score::{Note, Score};
 
 pub struct ScoreDrawComponent {
-    score: &'static Score,
+    score: Arc<Mutex<Score>>,
     score_viewport: ScoreViewport,
     event_tx: mpsc::Sender<InputEvent>,
 }
@@ -111,7 +111,7 @@ impl DrawComponent for ScoreDrawComponent {
 
 impl ScoreDrawComponent {
     pub fn new(
-        score: &'static Score,
+        score: Arc<Mutex<Score>>,
         score_viewport: ScoreViewport,
         tx: mpsc::Sender<InputEvent>,
     ) -> ScoreDrawComponent {
@@ -170,6 +170,8 @@ impl ScoreDrawComponent {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
                 let active_notes: HashMap<Pitch, Note> = self
                     .score
+                    .lock()
+                    .unwrap()
                     .notes_starting_at_time(time_point)
                     .into_iter()
                     .map(|note| (note.pitch, note))

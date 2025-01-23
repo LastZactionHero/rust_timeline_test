@@ -1,7 +1,7 @@
 // app_state.rs
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossterm::{
-    cursor::{self, Hide},
+    cursor::{self},
     event::{poll, read, Event, KeyCode},
     style::{self},
     terminal::{self, ClearType},
@@ -29,7 +29,7 @@ use crate::player::Player;
 use crate::score::Score;
 
 pub struct AppState {
-    score: &'static Score,
+    score: Arc<Mutex<Score>>,
     score_viewport: ScoreViewport,
     player: Arc<Mutex<Player>>,
     input_tx: mpsc::Sender<InputEvent>,
@@ -40,10 +40,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(score: &'static Score) -> AppState {
+    pub fn new(score: Arc<Mutex<Score>>) -> AppState {
         let (tx, rx) = mpsc::channel();
 
-        let player = Player::create(score, 44100);
+        let player = Player::create(Arc::clone(&score), 44100);
         let shared_player = Arc::new(Mutex::new(player));
 
         AppState {
@@ -62,7 +62,6 @@ impl AppState {
         // Setup terminal
         let mut stdout = io::stdout();
         stdout.execute(terminal::Clear(ClearType::All))?;
-        stdout.execute(Hide {})?;
 
         // Start input thread
         let input_tx = self.input_tx.clone();
@@ -152,7 +151,7 @@ impl AppState {
         let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(Box::new(
             draw_components::VSplitDrawComponent::new(
                 Box::new(ScoreDrawComponent::new(
-                    self.score,
+                    Arc::clone(&self.score),
                     self.score_viewport.clone(),
                     self.input_tx.clone(),
                 )),
