@@ -7,10 +7,12 @@ use super::DrawComponent;
 use crate::draw_components::Position;
 use crate::events::InputEvent;
 use crate::pitch::{self, Pitch, Tone};
+use crate::player::Player;
 use crate::score::{Note, Score};
 
 pub struct ScoreDrawComponent {
     score: Arc<Mutex<Score>>,
+    player: Arc<Mutex<Player>>,
     score_viewport: ScoreViewport,
     event_tx: mpsc::Sender<InputEvent>,
 }
@@ -112,11 +114,13 @@ impl DrawComponent for ScoreDrawComponent {
 impl ScoreDrawComponent {
     pub fn new(
         score: Arc<Mutex<Score>>,
+        player: Arc<Mutex<Player>>,
         score_viewport: ScoreViewport,
         tx: mpsc::Sender<InputEvent>,
     ) -> ScoreDrawComponent {
         ScoreDrawComponent {
             score,
+            player,
             score_viewport,
             event_tx: tx,
         }
@@ -194,7 +198,7 @@ impl ScoreDrawComponent {
                 time_point += 1;
             }
         }
-        if !playhead_in_view {
+        if !playhead_in_view && self.player.lock().unwrap().is_playing() {
             self.event_tx
                 .send(InputEvent::PlayheadOutOfViewport)
                 .unwrap();

@@ -152,6 +152,7 @@ impl AppState {
             draw_components::VSplitDrawComponent::new(
                 Box::new(ScoreDrawComponent::new(
                     Arc::clone(&self.score),
+                    Arc::clone(&self.player),
                     self.score_viewport.clone(),
                     self.input_tx.clone(),
                 )),

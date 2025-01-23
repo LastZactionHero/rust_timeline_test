@@ -60,6 +60,10 @@ impl Player {
         }
     }
 
+    pub fn is_playing(&self) -> bool {
+        self.state == PlayState::Playing
+    }
+
     pub fn current_time_b32(&self) -> u64 {
         self.time_b32
     }
