@@ -153,6 +153,17 @@ impl ScoreDrawComponent {
             }
         }
 
+        let mut time_point = self.score_viewport.time_point;
+        for col in 0..pos.w - 1 {
+            for _ in 0..self.score_viewport.resolution.duration_b32() {
+                for (row, pitch) in pitches.iter().enumerate() {
+                    if time_point == self.score_viewport.playback_time_point {
+                        self.wb(buffer, pos, col, row, '░');
+                    }
+                }
+                time_point += 1;
+            }
+        }
         let mut playhead_in_view = false;
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
@@ -165,32 +176,14 @@ impl ScoreDrawComponent {
                     .collect();
 
                 for (row, pitch) in pitches.iter().enumerate() {
-                    // if let Some(note) = active_notes.get(pitch) {
-                    //     self.wb_string(
-                    //         buffer,
-                    //         pos,
-                    //         col,
-                    //         row,
-                    //         self.note_string(note, time_point, &self.score_viewport.resolution),
-                    //     );
-                    // } else if time_point == self.score_viewport.playback_time_point {
-                    //     self.wb(buffer, pos, col, row, 'X');
-                    // }
-                    match active_notes.get(pitch) {
-                        Some(note) => {
-                            self.wb_string(
-                                buffer,
-                                pos,
-                                col,
-                                row,
-                                self.note_string(note, time_point, &self.score_viewport.resolution),
-                            );
-                        }
-                        None => {
-                            if time_point == self.score_viewport.playback_time_point {
-                                self.wb(buffer, pos, col, row, 'X');
-                            }
-                        }
+                    if let Some(note) = active_notes.get(pitch) {
+                        self.wb_string(
+                            buffer,
+                            pos,
+                            col,
+                            row,
+                            self.note_string(note, time_point, &self.score_viewport.resolution),
+                        );
                     }
                 }
                 if time_point == self.score_viewport.playback_time_point {

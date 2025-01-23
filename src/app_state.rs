@@ -1,7 +1,7 @@
 // app_state.rs
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossterm::{
-    cursor::{self},
+    cursor::{self, Hide},
     event::{poll, read, Event, KeyCode},
     style::{self},
     terminal::{self, ClearType},
@@ -62,6 +62,7 @@ impl AppState {
         // Setup terminal
         let mut stdout = io::stdout();
         stdout.execute(terminal::Clear(ClearType::All))?;
+        stdout.execute(Hide {})?;
 
         // Start input thread
         let input_tx = self.input_tx.clone();
