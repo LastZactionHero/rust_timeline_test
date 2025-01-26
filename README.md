@@ -4,6 +4,7 @@
 
 - Track editing
 - Save/load file
+- Promo
 
 ### MS 2: February
 
@@ -25,6 +26,7 @@
 ### MS 5: May
 
 - ML Sequencing
+- Midi
 
 ### MS 6: June
 
