@@ -1,4 +1,5 @@
 pub mod score_draw_component;
+pub mod status_bar_component;
 
 pub trait DrawComponent {
     fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &Position);
@@ -98,16 +99,25 @@ impl DrawComponent for BoxDrawComponent {
 }
 
 pub struct VSplitDrawComponent {
+    style: VSplitStyle,
     top_component: Box<dyn DrawComponent>,
     bottom_component: Box<dyn DrawComponent>,
 }
 
+#[derive(PartialEq, Eq)]
+pub enum VSplitStyle {
+    HalfWithDivider,
+    StatusBarNoDivider,
+}
+
 impl VSplitDrawComponent {
     pub fn new(
+        style: VSplitStyle,
         top_component: Box<dyn DrawComponent>,
         bottom_component: Box<dyn DrawComponent>,
     ) -> VSplitDrawComponent {
         VSplitDrawComponent {
+            style,
             top_component,
             bottom_component,
         }
@@ -116,25 +126,46 @@ impl VSplitDrawComponent {
 
 impl DrawComponent for VSplitDrawComponent {
     fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &Position) {
-        let pos_top = Position {
-            x: pos.x + 1,
-            y: pos.y + 1,
-            w: pos.w - 2,
-            h: pos.h / 2,
+        let pos_top = match self.style {
+            VSplitStyle::HalfWithDivider => Position {
+                x: pos.x + 1,
+                y: pos.y + 1,
+                w: pos.w - 2,
+                h: pos.h / 2,
+            },
+            VSplitStyle::StatusBarNoDivider => Position {
+                x: pos.x,
+                y: pos.y,
+                w: pos.w,
+                h: pos.h - 1,
+            },
         };
-        let pos_bottom = Position {
-            x: pos.x + 1,
-            y: pos.y + pos.h / 2 + 2,
-            w: pos.w - 2,
-            h: pos.h / 2 - 2,
+
+        let pos_bottom = match self.style {
+            VSplitStyle::HalfWithDivider => Position {
+                x: pos.x + 1,
+                y: pos.y + pos.h / 2 + 2,
+                w: pos.w - 2,
+                h: pos.h / 2 - 2,
+            },
+            VSplitStyle::StatusBarNoDivider => Position {
+                x: pos.x,
+                y: pos.y + pos.h - 1,
+                w: pos.w,
+                h: 1,
+            },
         };
+
         self.top_component.draw(buffer, &pos_top);
         self.bottom_component.draw(buffer, &pos_bottom);
-        for x in 1..pos.w - 1 {
-            self.wb(buffer, pos, x, pos.h / 2 + 1, '═');
+
+        if self.style == VSplitStyle::HalfWithDivider {
+            for x in 1..pos.w - 1 {
+                self.wb(buffer, pos, x, pos.h / 2 + 1, '═');
+            }
+            self.wb(buffer, pos, 0, pos.h / 2 + 1, BOX_LEFT_DIVIDER);
+            self.wb(buffer, pos, pos.w - 1, pos.h / 2 + 1, BOX_RIGHT_DIVIDER);
         }
-        self.wb(buffer, pos, 0, pos.h / 2 + 1, BOX_LEFT_DIVIDER);
-        self.wb(buffer, pos, pos.w - 1, pos.h / 2 + 1, BOX_RIGHT_DIVIDER);
     }
 }
 

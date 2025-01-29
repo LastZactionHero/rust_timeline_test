@@ -21,9 +21,12 @@ use std::{
 use crate::draw_components::{
     self,
     score_draw_component::{Resolution, ScoreDrawComponent, ScoreViewport},
-    BoxDrawComponent, DrawComponent, NullComponent, Position, Window,
+    status_bar_component::StatusBarComponent,
+    BoxDrawComponent, DrawComponent, FillComponent, NullComponent, Position, VSplitDrawComponent,
+    Window,
 };
 use crate::events::InputEvent;
+use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
 use crate::score::Score;
@@ -37,6 +40,7 @@ pub struct AppState {
     input_thread: Option<JoinHandle<()>>,
     audio_thread: Option<JoinHandle<()>>,
     buffer: Option<Vec<Vec<char>>>,
+    mode: Mode,
 }
 
 impl AppState {
@@ -55,6 +59,7 @@ impl AppState {
             input_thread: None,
             audio_thread: None,
             buffer: None,
+            mode: Mode::Normal,
         }
     }
 
@@ -127,6 +132,13 @@ impl AppState {
                                 self.score_viewport.playback_time_point
                                     - self.score_viewport.playback_time_point % 32;
                         }
+                        InputEvent::ToggleMode => {
+                            self.mode = match self.mode {
+                                Mode::Normal => Mode::Insert,
+                                Mode::Insert => Mode::Select,
+                                Mode::Select => Mode::Normal,
+                            }
+                        }
                     }
                     self.draw()?;
                 }
@@ -149,14 +161,19 @@ impl AppState {
         }
 
         let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(Box::new(
-            draw_components::VSplitDrawComponent::new(
+            VSplitDrawComponent::new(
+                draw_components::VSplitStyle::HalfWithDivider,
                 Box::new(ScoreDrawComponent::new(
                     Arc::clone(&self.score),
                     Arc::clone(&self.player),
-                    self.score_viewport.clone(),
+                    self.score_viewport,
                     self.input_tx.clone(),
                 )),
-                Box::new(draw_components::NullComponent {}),
+                Box::new(VSplitDrawComponent::new(
+                    draw_components::VSplitStyle::StatusBarNoDivider,
+                    Box::new(NullComponent {}),
+                    Box::new(StatusBarComponent::new(self.mode)),
+                )),
             ),
         )))]);
 
@@ -193,7 +210,10 @@ impl AppState {
             if poll(Duration::from_millis(500))? {
                 if let Event::Key(event) = read()? {
                     match event.code {
-                        KeyCode::Char('q') => {
+                        KeyCode::Char('3') => tx.send(InputEvent::ToggleMode).unwrap(),
+                        KeyCode::Char('4') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
+                        // Legacy
+                        KeyCode::Char('p') => {
                             tx.send(InputEvent::Quit).unwrap();
                             break;
                         }

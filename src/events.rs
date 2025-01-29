@@ -9,4 +9,5 @@ pub enum InputEvent {
     Quit,
     PlayerBeatChange(u64),
     PlayheadOutOfViewport,
+    ToggleMode,
 }

@@ -7,6 +7,7 @@ mod app_state;
 mod draw_components;
 mod draw_score;
 mod events;
+mod mode;
 mod pitch;
 mod player;
 mod score;
