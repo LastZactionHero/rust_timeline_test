@@ -2,14 +2,9 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossterm::{
     cursor::{self},
-    event::{poll, read, Event, KeyCode},
     style::{self},
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
-};
-use crossterm::{
-    execute,
-    terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
 };
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -25,7 +20,7 @@ use crate::draw_components::{
     BoxDrawComponent, DrawComponent, FillComponent, NullComponent, Position, VSplitDrawComponent,
     Window,
 };
-use crate::events::InputEvent;
+use crate::events::{capture_input, InputEvent};
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
@@ -71,14 +66,14 @@ impl AppState {
         // Start input thread
         let input_tx = self.input_tx.clone();
         self.input_thread = Some(thread::spawn(move || {
-            let _ = Self::capture_input(&input_tx);
+            let _ = capture_input(&input_tx);
         }));
 
         // Start audio thread
         let player_tx = self.input_tx.clone();
         let player = Arc::clone(&self.player);
         self.audio_thread = Some(thread::spawn(move || {
-            let _ = Self::audio_player(player, player_tx.clone());
+            let _ = Self::audio_player(&player, player_tx.clone());
         }));
 
         // Main loop
@@ -143,7 +138,7 @@ impl AppState {
                     self.draw()?;
                 }
                 Err(e) => {
-                    eprintln!("Error in event loop: {}", e);
+                    eprintln!("Error in event loop: {e}");
                     break;
                 }
             }
@@ -196,7 +191,6 @@ impl AppState {
                         .queue(style::Print(char))?;
                 }
             }
-            let row: String = buffer[y as usize].clone().into_iter().collect();
         }
         stdout.flush()?;
 
@@ -204,41 +198,8 @@ impl AppState {
         Ok(())
     }
 
-    fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
-        crossterm::terminal::enable_raw_mode()?;
-        loop {
-            if poll(Duration::from_millis(500))? {
-                if let Event::Key(event) = read()? {
-                    match event.code {
-                        KeyCode::Char('3') => tx.send(InputEvent::ToggleMode).unwrap(),
-                        KeyCode::Char('4') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
-                        // Legacy
-                        KeyCode::Char('p') => {
-                            tx.send(InputEvent::Quit).unwrap();
-                            break;
-                        }
-                        KeyCode::Up => tx.send(InputEvent::ViewerOctaveIncrease).unwrap(),
-                        KeyCode::Down => tx.send(InputEvent::ViewerOctaveDecrease).unwrap(),
-                        KeyCode::Left => tx.send(InputEvent::ViewerBarPrevious).unwrap(),
-                        KeyCode::Right => tx.send(InputEvent::ViewerBarNext).unwrap(),
-                        KeyCode::Char('[') => {
-                            tx.send(InputEvent::ViewerResolutionDecrease).unwrap()
-                        }
-                        KeyCode::Char(']') => {
-                            tx.send(InputEvent::ViewerResolutionIncrease).unwrap()
-                        }
-                        KeyCode::Char(' ') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
-                        _ => (),
-                    }
-                }
-            }
-        }
-        crossterm::terminal::disable_raw_mode()?;
-        Ok(())
-    }
-
     fn audio_player(
-        player: Arc<Mutex<Player>>,
+        player: &Arc<Mutex<Player>>,
         tx: mpsc::Sender<InputEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let host = cpal::default_host();
@@ -247,7 +208,7 @@ impl AppState {
             .expect("Did not find default output device");
         let config = device.default_output_config().unwrap();
 
-        let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+        let err_fn = |err| eprintln!("an error occurred on stream: {err}");
         let stream_config: cpal::StreamConfig = config.into();
         let channels = stream_config.channels as usize;
 
@@ -255,7 +216,7 @@ impl AppState {
         let stream = device.build_output_stream(
             &stream_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                Self::write_data(data, channels, player_clone.clone(), tx.clone())
+                Self::write_data(data, channels, &player_clone.clone(), &tx.clone());
             },
             err_fn,
             None,
@@ -270,11 +231,12 @@ impl AppState {
     fn write_data(
         output: &mut [f32],
         channels: usize,
-        player: Arc<Mutex<Player>>,
-        tx: mpsc::Sender<InputEvent>,
+        player: &Arc<Mutex<Player>>,
+        tx: &mpsc::Sender<InputEvent>,
     ) {
         let mut time_b32 = player.lock().unwrap().current_time_b32();
         for frame in output.chunks_mut(channels) {
+            #[allow(clippy::cast_possible_truncation)]
             let sample = player.lock().unwrap().next().unwrap() as f32;
             let next_time_b32 = player.lock().unwrap().current_time_b32();
             if next_time_b32 != time_b32 {
