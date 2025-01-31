@@ -13,6 +13,7 @@ use std::{
     time::Duration,
 };
 
+use crate::cursor::Cursor;
 use crate::draw_components::{
     self,
     score_draw_component::{Resolution, ScoreDrawComponent, ScoreViewport},
@@ -36,6 +37,7 @@ pub struct AppState {
     audio_thread: Option<JoinHandle<()>>,
     buffer: Option<Vec<Vec<char>>>,
     mode: Arc<Mutex<Mode>>,
+    cursor: Arc<Mutex<Cursor>>,
 }
 
 impl AppState {
@@ -55,6 +57,7 @@ impl AppState {
             audio_thread: None,
             buffer: None,
             mode: Arc::new(Mutex::new(Mode::Normal)),
+            cursor: Arc::new(Mutex::new(Cursor::new(Pitch::new(Tone::C, 4), 0))),
         }
     }
 
@@ -65,8 +68,9 @@ impl AppState {
 
         // Start input thread
         let input_tx = self.input_tx.clone();
+        let mode_clone = Arc::clone(&self.mode);
         self.input_thread = Some(thread::spawn(move || {
-            let _ = capture_input(&input_tx);
+            let _ = capture_input(&input_tx, &mode_clone);
         }));
 
         // Start audio thread
@@ -132,7 +136,23 @@ impl AppState {
                                 Mode::Normal => Mode::Insert,
                                 Mode::Insert => Mode::Select,
                                 Mode::Select => Mode::Normal,
-                            }
+                            };
+                            match *self.mode.lock().unwrap() {
+                                Mode::Select | Mode::Insert => self.cursor.lock().unwrap().show(),
+                                Mode::Normal => self.cursor.lock().unwrap().hide(),
+                            };
+                        }
+                        InputEvent::CursorUp => {
+                            self.cursor.lock().unwrap().up();
+                        }
+                        InputEvent::CursorDown => {
+                            self.cursor.lock().unwrap().down();
+                        }
+                        InputEvent::CursorLeft => {
+                            self.cursor.lock().unwrap().left();
+                        }
+                        InputEvent::CursorRight => {
+                            self.cursor.lock().unwrap().right();
                         }
                     }
                     self.draw()?;
@@ -163,6 +183,7 @@ impl AppState {
                     Arc::clone(&self.player),
                     self.score_viewport,
                     self.input_tx.clone(),
+                    Arc::clone(&self.cursor),
                 )),
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,

@@ -4,6 +4,7 @@ use std::ops::Index;
 use std::sync::{mpsc, Arc, Mutex};
 
 use super::DrawComponent;
+use crate::cursor::Cursor;
 use crate::draw_components::Position;
 use crate::events::InputEvent;
 use crate::pitch::{self, Pitch, Tone};
@@ -15,6 +16,7 @@ pub struct ScoreDrawComponent {
     player: Arc<Mutex<Player>>,
     score_viewport: ScoreViewport,
     event_tx: mpsc::Sender<InputEvent>,
+    cursor: Arc<Mutex<Cursor>>,
 }
 
 #[derive(Clone, Copy)]
@@ -117,12 +119,14 @@ impl ScoreDrawComponent {
         player: Arc<Mutex<Player>>,
         score_viewport: ScoreViewport,
         tx: mpsc::Sender<InputEvent>,
+        cursor: Arc<Mutex<Cursor>>,
     ) -> ScoreDrawComponent {
         ScoreDrawComponent {
             score,
             player,
             score_viewport,
             event_tx: tx,
+            cursor,
         }
     }
 
@@ -204,6 +208,8 @@ impl ScoreDrawComponent {
                             self.note_string(note, time_point, &self.score_viewport.resolution),
                         );
                     }
+
+                    // if cursor position...
                 }
                 if time_point == self.score_viewport.playback_time_point {
                     playhead_in_view = true;

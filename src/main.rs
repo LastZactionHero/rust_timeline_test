@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 mod app_state;
+mod cursor;
 mod draw_components;
 mod draw_score;
 mod events;
