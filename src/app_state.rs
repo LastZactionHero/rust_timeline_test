@@ -40,7 +40,7 @@ pub struct AppState {
     input_thread: Option<JoinHandle<()>>,
     audio_thread: Option<JoinHandle<()>>,
     buffer: Option<Vec<Vec<char>>>,
-    mode: Mode,
+    mode: Arc<Mutex<Mode>>,
 }
 
 impl AppState {
@@ -59,7 +59,7 @@ impl AppState {
             input_thread: None,
             audio_thread: None,
             buffer: None,
-            mode: Mode::Normal,
+            mode: Arc::new(Mutex::new(Mode::Normal)),
         }
     }
 
@@ -133,7 +133,7 @@ impl AppState {
                                     - self.score_viewport.playback_time_point % 32;
                         }
                         InputEvent::ToggleMode => {
-                            self.mode = match self.mode {
+                            *self.mode.lock().unwrap() = match *self.mode.lock().unwrap() {
                                 Mode::Normal => Mode::Insert,
                                 Mode::Insert => Mode::Select,
                                 Mode::Select => Mode::Normal,
@@ -172,7 +172,7 @@ impl AppState {
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,
                     Box::new(NullComponent {}),
-                    Box::new(StatusBarComponent::new(self.mode)),
+                    Box::new(StatusBarComponent::new(Arc::clone(&self.mode))),
                 )),
             ),
         )))]);
