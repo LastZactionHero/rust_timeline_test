@@ -37,7 +37,7 @@ pub struct AppState {
     audio_thread: Option<JoinHandle<()>>,
     buffer: Option<Vec<Vec<char>>>,
     mode: Arc<Mutex<Mode>>,
-    cursor: Arc<Mutex<Cursor>>,
+    cursor: Cursor,
 }
 
 impl AppState {
@@ -57,7 +57,7 @@ impl AppState {
             audio_thread: None,
             buffer: None,
             mode: Arc::new(Mutex::new(Mode::Normal)),
-            cursor: Arc::new(Mutex::new(Cursor::new(Pitch::new(Tone::C, 4), 0))),
+            cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
         }
     }
 
@@ -114,10 +114,16 @@ impl AppState {
                         InputEvent::ViewerResolutionIncrease => {
                             self.score_viewport.resolution =
                                 self.score_viewport.resolution.next_up();
+                            self.cursor = self
+                                .cursor
+                                .resolution_align(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::ViewerResolutionDecrease => {
                             self.score_viewport.resolution =
                                 self.score_viewport.resolution.next_down();
+                            self.cursor = self
+                                .cursor
+                                .resolution_align(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::PlayerTogglePlayback => {
                             let mut player_guard = self.player.lock().unwrap();
@@ -132,27 +138,33 @@ impl AppState {
                                     - self.score_viewport.playback_time_point % 32;
                         }
                         InputEvent::ToggleMode => {
-                            *self.mode.lock().unwrap() = match *self.mode.lock().unwrap() {
+                            let next_mode = match *self.mode.lock().unwrap() {
                                 Mode::Normal => Mode::Insert,
                                 Mode::Insert => Mode::Select,
                                 Mode::Select => Mode::Normal,
                             };
-                            match *self.mode.lock().unwrap() {
-                                Mode::Select | Mode::Insert => self.cursor.lock().unwrap().show(),
-                                Mode::Normal => self.cursor.lock().unwrap().hide(),
+                            *self.mode.lock().unwrap() = next_mode;
+                            // TODO: Cursor dependency on Mode?
+                            self.cursor = match *self.mode.lock().unwrap() {
+                                Mode::Select | Mode::Insert => self.cursor.show(),
+                                Mode::Normal => self.cursor.hide(),
                             };
                         }
                         InputEvent::CursorUp => {
-                            self.cursor.lock().unwrap().up();
+                            self.cursor = self.cursor.up();
                         }
                         InputEvent::CursorDown => {
-                            self.cursor.lock().unwrap().down();
+                            self.cursor = self.cursor.down();
                         }
                         InputEvent::CursorLeft => {
-                            self.cursor.lock().unwrap().left();
+                            self.cursor = self
+                                .cursor
+                                .left(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::CursorRight => {
-                            self.cursor.lock().unwrap().right();
+                            self.cursor = self
+                                .cursor
+                                .right(self.score_viewport.resolution.duration_b32());
                         }
                     }
                     self.draw()?;
@@ -183,7 +195,7 @@ impl AppState {
                     Arc::clone(&self.player),
                     self.score_viewport,
                     self.input_tx.clone(),
-                    Arc::clone(&self.cursor),
+                    self.cursor,
                 )),
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,

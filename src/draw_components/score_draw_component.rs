@@ -16,7 +16,7 @@ pub struct ScoreDrawComponent {
     player: Arc<Mutex<Player>>,
     score_viewport: ScoreViewport,
     event_tx: mpsc::Sender<InputEvent>,
-    cursor: Arc<Mutex<Cursor>>,
+    cursor: Cursor,
 }
 
 #[derive(Clone, Copy)]
@@ -119,7 +119,7 @@ impl ScoreDrawComponent {
         player: Arc<Mutex<Player>>,
         score_viewport: ScoreViewport,
         tx: mpsc::Sender<InputEvent>,
-        cursor: Arc<Mutex<Cursor>>,
+        cursor: Cursor,
     ) -> ScoreDrawComponent {
         ScoreDrawComponent {
             score,
@@ -209,8 +209,11 @@ impl ScoreDrawComponent {
                         );
                     }
 
-                    // if cursor position...
+                    if self.cursor.equals(*pitch, time_point) {
+                        self.wb(buffer, pos, col, row, 'C');
+                    }
                 }
+
                 if time_point == self.score_viewport.playback_time_point {
                     playhead_in_view = true;
                 }
