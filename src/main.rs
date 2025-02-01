@@ -11,6 +11,7 @@ mod events;
 mod mode;
 mod pitch;
 mod player;
+mod resolution;
 mod score;
 mod sin_wave;
 mod song;

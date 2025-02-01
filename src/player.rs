@@ -81,6 +81,10 @@ impl Player {
             .retain(|note| note.onset_b32 + note.duration_b32 > self.time_b32);
         self.active_notes.extend(new_notes);
     }
+
+    pub fn state(&self) -> PlayState {
+        return self.state;
+    }
 }
 
 impl Iterator for Player {

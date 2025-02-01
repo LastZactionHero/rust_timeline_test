@@ -1,77 +1,21 @@
 use std::collections::HashMap;
-use std::fmt::Display;
-use std::ops::Index;
 use std::sync::{mpsc, Arc, Mutex};
 
 use super::DrawComponent;
 use crate::cursor::Cursor;
 use crate::draw_components::Position;
 use crate::events::InputEvent;
-use crate::pitch::{self, Pitch, Tone};
-use crate::player::Player;
+use crate::pitch::Pitch;
+use crate::player::{PlayState, Player};
+use crate::resolution::Resolution;
 use crate::score::{Note, Score};
 
 pub struct ScoreDrawComponent {
     score: Arc<Mutex<Score>>,
-    player: Arc<Mutex<Player>>,
+    play_state: PlayState,
     score_viewport: ScoreViewport,
     event_tx: mpsc::Sender<InputEvent>,
     cursor: Cursor,
-}
-
-#[derive(Clone, Copy)]
-pub enum Resolution {
-    Time1_4,
-    Time1_8,
-    Time1_16,
-    Time1_32,
-}
-
-impl Resolution {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Resolution::Time1_4 => "1/4",
-            Resolution::Time1_8 => "1/8",
-            Resolution::Time1_16 => "1/16",
-            Resolution::Time1_32 => "1/32",
-        }
-    }
-
-    pub fn bar_length_in_beats(&self) -> usize {
-        match self {
-            Resolution::Time1_4 => 4,
-            Resolution::Time1_8 => 8,
-            Resolution::Time1_16 => 16,
-            Resolution::Time1_32 => 32,
-        }
-    }
-
-    pub fn duration_b32(&self) -> u64 {
-        match self {
-            Resolution::Time1_4 => 8,
-            Resolution::Time1_8 => 4,
-            Resolution::Time1_16 => 2,
-            Resolution::Time1_32 => 1,
-        }
-    }
-
-    pub fn next_down(&self) -> Resolution {
-        match self {
-            Resolution::Time1_32 => Resolution::Time1_16,
-            Resolution::Time1_16 => Resolution::Time1_8,
-            Resolution::Time1_8 => Resolution::Time1_4,
-            Resolution::Time1_4 => Resolution::Time1_4,
-        }
-    }
-
-    pub fn next_up(&self) -> Resolution {
-        match self {
-            Resolution::Time1_4 => Resolution::Time1_8,
-            Resolution::Time1_8 => Resolution::Time1_16,
-            Resolution::Time1_16 => Resolution::Time1_32,
-            Resolution::Time1_32 => Resolution::Time1_32,
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -116,14 +60,14 @@ impl DrawComponent for ScoreDrawComponent {
 impl ScoreDrawComponent {
     pub fn new(
         score: Arc<Mutex<Score>>,
-        player: Arc<Mutex<Player>>,
+        play_state: PlayState,
         score_viewport: ScoreViewport,
         tx: mpsc::Sender<InputEvent>,
         cursor: Cursor,
     ) -> ScoreDrawComponent {
         ScoreDrawComponent {
             score,
-            player,
+            play_state,
             score_viewport,
             event_tx: tx,
             cursor,
@@ -177,7 +121,7 @@ impl ScoreDrawComponent {
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
-                for (row, pitch) in pitches.iter().enumerate() {
+                for (row, _pitch) in pitches.iter().enumerate() {
                     if time_point == self.score_viewport.playback_time_point {
                         self.wb(buffer, pos, col, row, '░');
                     }
@@ -224,7 +168,7 @@ impl ScoreDrawComponent {
         }
 
         // TODO: Rethink scrolling to accomodate Cursor and Playhead
-        if !playhead_in_view && self.player.lock().unwrap().is_playing() {
+        if !playhead_in_view && self.play_state == PlayState::Playing {
             self.event_tx
                 .send(InputEvent::PlayheadOutOfViewport)
                 .unwrap();

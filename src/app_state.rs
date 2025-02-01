@@ -16,7 +16,7 @@ use std::{
 use crate::cursor::Cursor;
 use crate::draw_components::{
     self,
-    score_draw_component::{Resolution, ScoreDrawComponent, ScoreViewport},
+    score_draw_component::{ScoreDrawComponent, ScoreViewport},
     status_bar_component::StatusBarComponent,
     BoxDrawComponent, DrawComponent, FillComponent, NullComponent, Position, VSplitDrawComponent,
     Window,
@@ -25,6 +25,7 @@ use crate::events::{capture_input, InputEvent};
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
+use crate::resolution::Resolution;
 use crate::score::Score;
 
 pub struct AppState {
@@ -191,7 +192,7 @@ impl AppState {
                 draw_components::VSplitStyle::HalfWithDivider,
                 Box::new(ScoreDrawComponent::new(
                     Arc::clone(&self.score),
-                    Arc::clone(&self.player),
+                    self.player.lock().unwrap().state(),
                     self.score_viewport,
                     self.input_tx.clone(),
                     self.cursor,
