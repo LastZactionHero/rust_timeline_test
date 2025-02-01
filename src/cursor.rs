@@ -7,7 +7,7 @@ pub struct Cursor {
     visibility: Visibility,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Visibility {
     Hidden,
     Visible,
@@ -74,6 +74,10 @@ impl Cursor {
         let mut next_cursor = self;
         next_cursor.visibility = Visibility::Hidden;
         next_cursor
+    }
+
+    pub fn visible(self) -> bool {
+        self.visibility == Visibility::Visible
     }
 
     pub fn equals(self, pitch: Pitch, time_point: u64) -> bool {

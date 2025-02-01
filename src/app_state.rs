@@ -144,7 +144,6 @@ impl AppState {
                                 Mode::Select => Mode::Normal,
                             };
                             *self.mode.lock().unwrap() = next_mode;
-                            // TODO: Cursor dependency on Mode?
                             self.cursor = match *self.mode.lock().unwrap() {
                                 Mode::Select | Mode::Insert => self.cursor.show(),
                                 Mode::Normal => self.cursor.hide(),

@@ -186,6 +186,7 @@ impl ScoreDrawComponent {
             }
         }
         let mut playhead_in_view = false;
+        let mut cursor_in_view = false;
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
@@ -209,8 +210,9 @@ impl ScoreDrawComponent {
                         );
                     }
 
-                    if self.cursor.equals(*pitch, time_point) {
+                    if self.cursor.visible() && self.cursor.equals(*pitch, time_point) {
                         self.wb(buffer, pos, col, row, 'C');
+                        cursor_in_view = true;
                     }
                 }
 
@@ -220,6 +222,8 @@ impl ScoreDrawComponent {
                 time_point += 1;
             }
         }
+
+        // TODO: Rethink scrolling to accomodate Cursor and Playhead
         if !playhead_in_view && self.player.lock().unwrap().is_playing() {
             self.event_tx
                 .send(InputEvent::PlayheadOutOfViewport)
