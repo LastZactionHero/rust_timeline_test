@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{mpsc, Arc, Mutex};
 
 use super::{DrawComponent, DrawResult, ViewportDrawResult};
@@ -39,6 +40,16 @@ impl ScoreViewport {
             time_point,
             playback_time_point,
         }
+    }
+}
+
+impl fmt::Display for ScoreViewport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {} {}",
+            self.middle_pitch, self.time_point, self.playback_time_point
+        )
     }
 }
 

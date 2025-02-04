@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::pitch::Pitch;
 
 #[derive(Clone, Copy)]
@@ -90,5 +92,11 @@ impl Cursor {
 
     pub fn pitch(self) -> Pitch {
         self.pitch
+    }
+}
+
+impl fmt::Display for Cursor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.time_point, self.pitch)
     }
 }

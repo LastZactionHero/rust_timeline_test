@@ -203,7 +203,11 @@ impl AppState {
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,
                     Box::new(NullComponent {}),
-                    Box::new(StatusBarComponent::new(Arc::clone(&self.mode))),
+                    Box::new(StatusBarComponent::new(
+                        Arc::clone(&self.mode),
+                        self.cursor,
+                        self.score_viewport,
+                    )),
                 )),
             ),
         )))]);
