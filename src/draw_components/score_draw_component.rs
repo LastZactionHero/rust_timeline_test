@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 
-use super::DrawComponent;
+use super::{DrawComponent, DrawResult, ViewportDrawResult};
 use crate::cursor::Cursor;
 use crate::draw_components::Position;
 use crate::events::InputEvent;
@@ -43,9 +43,9 @@ impl ScoreViewport {
 }
 
 impl DrawComponent for ScoreDrawComponent {
-    fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) {
+    fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> Vec<DrawResult> {
         self.draw_pitches(buffer, pos);
-        self.draw_score(
+        let viewport_draw_result = self.draw_score(
             buffer,
             &Position {
                 x: pos.x + 4,
@@ -54,6 +54,7 @@ impl DrawComponent for ScoreDrawComponent {
                 h: pos.h,
             },
         );
+        vec![DrawResult::ViewportDrawResult(viewport_draw_result)]
     }
 }
 
@@ -94,7 +95,7 @@ impl ScoreDrawComponent {
         pitches
     }
 
-    fn draw_score(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) {
+    fn draw_score(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> ViewportDrawResult {
         let pitches = self.visible_pitches(pos);
 
         for col in 0..pos.w - 1 {
@@ -105,15 +106,14 @@ impl ScoreDrawComponent {
             }
 
             if bar_col {
+                let time_point_at_col = self.score_viewport.time_point
+                    + (col as u64) * self.score_viewport.resolution.duration_b32();
                 self.wb_string(
                     buffer,
                     pos,
                     col,
                     pitches.len(),
-                    ((col as u64 + self.score_viewport.time_point)
-                        / (self.score_viewport.resolution.bar_length_in_beats() as u64)
-                        + 1)
-                    .to_string(),
+                    (time_point_at_col / (32)).to_string(),
                 );
             }
         }
@@ -129,8 +129,6 @@ impl ScoreDrawComponent {
                 time_point += 1;
             }
         }
-        let mut playhead_in_view = false;
-        let mut cursor_in_view = false;
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
@@ -156,22 +154,18 @@ impl ScoreDrawComponent {
 
                     if self.cursor.visible() && self.cursor.equals(*pitch, time_point) {
                         self.wb(buffer, pos, col, row, 'C');
-                        cursor_in_view = true;
                     }
                 }
 
-                if time_point == self.score_viewport.playback_time_point {
-                    playhead_in_view = true;
-                }
                 time_point += 1;
             }
         }
 
-        // TODO: Rethink scrolling to accomodate Cursor and Playhead
-        if !playhead_in_view && self.play_state == PlayState::Playing {
-            self.event_tx
-                .send(InputEvent::PlayheadOutOfViewport)
-                .unwrap();
+        ViewportDrawResult {
+            pitch_low: *pitches.last().unwrap(),
+            pitch_high: *pitches.first().unwrap(),
+            time_point_start: self.score_viewport.time_point,
+            time_point_end: time_point,
         }
     }
 

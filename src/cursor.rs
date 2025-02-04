@@ -83,4 +83,12 @@ impl Cursor {
     pub fn equals(self, pitch: Pitch, time_point: u64) -> bool {
         self.pitch == pitch && self.time_point == time_point
     }
+
+    pub fn time_point(self) -> u64 {
+        self.time_point
+    }
+
+    pub fn pitch(self) -> Pitch {
+        self.pitch
+    }
 }

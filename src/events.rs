@@ -14,7 +14,6 @@ pub enum InputEvent {
     PlayerTogglePlayback,
     Quit,
     PlayerBeatChange(u64),
-    PlayheadOutOfViewport,
     ToggleMode,
     CursorUp,
     CursorDown,

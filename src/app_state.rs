@@ -13,13 +13,12 @@ use std::{
     time::Duration,
 };
 
-use crate::cursor::Cursor;
 use crate::draw_components::{
     self,
     score_draw_component::{ScoreDrawComponent, ScoreViewport},
     status_bar_component::StatusBarComponent,
-    BoxDrawComponent, DrawComponent, FillComponent, NullComponent, Position, VSplitDrawComponent,
-    Window,
+    BoxDrawComponent, DrawComponent, DrawResult, FillComponent, NullComponent, Position,
+    VSplitDrawComponent, Window,
 };
 use crate::events::{capture_input, InputEvent};
 use crate::mode::Mode;
@@ -27,6 +26,7 @@ use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
 use crate::resolution::Resolution;
 use crate::score::Score;
+use crate::{cursor::Cursor, draw_components::ViewportDrawResult};
 
 pub struct AppState {
     score: Arc<Mutex<Score>>,
@@ -133,11 +133,6 @@ impl AppState {
                         InputEvent::PlayerBeatChange(playback_time_point_b32) => {
                             self.score_viewport.playback_time_point = playback_time_point_b32;
                         }
-                        InputEvent::PlayheadOutOfViewport => {
-                            self.score_viewport.time_point =
-                                self.score_viewport.playback_time_point
-                                    - self.score_viewport.playback_time_point % 32;
-                        }
                         InputEvent::ToggleMode => {
                             let next_mode = match *self.mode.lock().unwrap() {
                                 Mode::Normal => Mode::Insert,
@@ -152,9 +147,17 @@ impl AppState {
                         }
                         InputEvent::CursorUp => {
                             self.cursor = self.cursor.up();
+                            match self.score_viewport.middle_pitch.next() {
+                                Some(next_pitch) => self.score_viewport.middle_pitch = next_pitch,
+                                None => (),
+                            }
                         }
                         InputEvent::CursorDown => {
                             self.cursor = self.cursor.down();
+                            match self.score_viewport.middle_pitch.prev() {
+                                Some(prev_pitch) => self.score_viewport.middle_pitch = prev_pitch,
+                                None => (),
+                            }
                         }
                         InputEvent::CursorLeft => {
                             self.cursor = self
@@ -211,7 +214,38 @@ impl AppState {
             w: width as usize,
             h: height as usize,
         };
-        base_component.draw(&mut buffer, &position);
+        let draw_results = base_component.draw(&mut buffer, &position);
+        for draw_result in draw_results {
+            match draw_result {
+                DrawResult::ViewportDrawResult(viewport_draw_result) => {
+                    match *self.mode.lock().unwrap() {
+                        Mode::Normal => {
+                            let player = self.player.lock().unwrap();
+
+                            if player.is_playing()
+                                && (player.current_time_b32()
+                                    < viewport_draw_result.time_point_start
+                                    || player.current_time_b32()
+                                        >= viewport_draw_result.time_point_end)
+                            {
+                                self.score_viewport.time_point =
+                                    player.current_time_b32() - player.current_time_b32() % 32
+                            }
+                        }
+                        Mode::Insert | Mode::Select => {
+                            if self.cursor.time_point() < viewport_draw_result.time_point_start
+                                || self.cursor.time_point()
+                                    >= viewport_draw_result.time_point_end - 2
+                            {
+                                // TODO: Rework this
+                                self.score_viewport.time_point =
+                                    self.cursor.time_point() - self.cursor.time_point() % 32;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         for y in 0..height {
             for x in 0..width {
