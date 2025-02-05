@@ -21,6 +21,7 @@ pub enum InputEvent {
     CursorRight,
     InsertNoteAtCursor,
     StartNoteAtCursor,
+    Cancel,
 }
 
 pub fn capture_input(
@@ -33,6 +34,7 @@ pub fn capture_input(
             if let Event::Key(event) = read()? {
                 let mode = *mode_lock.lock().unwrap();
                 match event.code {
+                    KeyCode::Esc => tx.send(InputEvent::Cancel).unwrap(),
                     KeyCode::Char('3') => tx.send(InputEvent::ToggleMode).unwrap(),
                     KeyCode::Char('4') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
                     KeyCode::Char('p') => {

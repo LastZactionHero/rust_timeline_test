@@ -22,6 +22,9 @@ enum Visibility {
 pub enum CursorMode {
     Move,
     Insert(u64), // Start insert onset
+                 // SELECT
+                 // CUT
+                 // YANK
 }
 
 impl Cursor {
@@ -124,13 +127,19 @@ impl Cursor {
         self.mode
     }
 
-    pub fn start_drag(self) -> Cursor {
+    pub fn start_insert(self) -> Cursor {
         let mut cursor = self;
         cursor.mode = CursorMode::Insert(self.time_point);
         cursor
     }
 
-    pub fn end_drag(self) -> Cursor {
+    pub fn end_insert(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Move;
+        cursor
+    }
+
+    pub fn cancel(self) -> Cursor {
         let mut cursor = self;
         cursor.mode = CursorMode::Move;
         cursor

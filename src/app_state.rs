@@ -182,7 +182,7 @@ impl AppState {
                         }
                         InputEvent::StartNoteAtCursor => match self.cursor.mode() {
                             CursorMode::Move => {
-                                self.cursor = self.cursor.start_drag();
+                                self.cursor = self.cursor.start_insert();
                             }
                             CursorMode::Insert(onset_b32) => {
                                 if onset_b32 < self.cursor.time_point() {
@@ -192,9 +192,10 @@ impl AppState {
                                         self.cursor.time_point() - onset_b32 + 2,
                                     );
                                 }
-                                self.cursor = self.cursor.end_drag();
+                                self.cursor = self.cursor.end_insert();
                             }
                         },
+                        InputEvent::Cancel => self.cursor = self.cursor.cancel(),
                     }
                     self.draw()?;
                 }
