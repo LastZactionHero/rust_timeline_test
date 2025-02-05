@@ -24,6 +24,7 @@
 - Multi-instrument
 - Keyboard maps
 - Score editing
+- Looping
 
 ### MS 3: March
 
@@ -34,6 +35,7 @@
 
 ### MS 4: April
 
+- Drum Machine
 - Samplers
 - Effects
 - Mixdown
