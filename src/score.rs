@@ -38,4 +38,35 @@ impl Score {
         }
         last_time_point_in_song > time_point_b32
     }
+
+    pub fn insert_or_remove(&mut self, pitch: Pitch, onset_b32: u64, duration_b32: u64) {
+        let mut notes_starting_at_time = self.notes_starting_at_time(onset_b32);
+
+        let mut note_found_at_index = None;
+        for (index, note) in notes_starting_at_time.iter().enumerate() {
+            if note.pitch == pitch {
+                note_found_at_index = Some(index);
+            }
+        }
+        if let Some(matching_note_index) = note_found_at_index {
+            notes_starting_at_time.remove(matching_note_index);
+            self.notes.insert(onset_b32, notes_starting_at_time);
+            return;
+        }
+
+        let note_to_insert = Note {
+            pitch,
+            onset_b32,
+            duration_b32,
+        };
+
+        match self.notes.get_mut(&onset_b32) {
+            Some(notes_at_onset) => {
+                notes_at_onset.push(note_to_insert);
+            }
+            None => {
+                self.notes.insert(onset_b32, vec![note_to_insert]);
+            }
+        }
+    }
 }

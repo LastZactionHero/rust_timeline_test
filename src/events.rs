@@ -19,6 +19,7 @@ pub enum InputEvent {
     CursorDown,
     CursorLeft,
     CursorRight,
+    InsertNoteAtCursor,
 }
 
 pub fn capture_input(
@@ -67,6 +68,11 @@ pub fn capture_input(
                     }
                     KeyCode::Char('[') => tx.send(InputEvent::ViewerResolutionDecrease).unwrap(),
                     KeyCode::Char(']') => tx.send(InputEvent::ViewerResolutionIncrease).unwrap(),
+                    KeyCode::Enter => {
+                        if mode == Mode::Insert {
+                            tx.send(InputEvent::InsertNoteAtCursor).unwrap();
+                        }
+                    }
                     _ => (),
                 }
             }

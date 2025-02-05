@@ -11,8 +11,9 @@
 - Track editing
   - X Modes
   - X Cursor
-  - Insert
-  - Delete
+  - X Insert Single
+  - Insert Duration
+  - X Delete
   - Select
   - Yank
   - Copy

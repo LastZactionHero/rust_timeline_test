@@ -169,6 +169,16 @@ impl AppState {
                                 .cursor
                                 .right(self.score_viewport.resolution.duration_b32());
                         }
+                        InputEvent::InsertNoteAtCursor => {
+                            self.score.lock().unwrap().insert_or_remove(
+                                self.cursor.pitch(),
+                                self.cursor.time_point(),
+                                self.score_viewport.resolution.duration_b32(),
+                            );
+                            self.cursor = self
+                                .cursor
+                                .right(self.score_viewport.resolution.duration_b32());
+                        }
                     }
                     self.draw()?;
                 }
