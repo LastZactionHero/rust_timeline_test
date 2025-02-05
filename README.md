@@ -12,7 +12,7 @@
   - X Modes
   - X Cursor
   - X Insert Single
-  - Insert Duration
+  - X Insert Duration
   - X Delete
   - Select
   - Yank

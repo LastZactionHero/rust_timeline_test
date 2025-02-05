@@ -20,6 +20,7 @@ pub enum InputEvent {
     CursorLeft,
     CursorRight,
     InsertNoteAtCursor,
+    StartNoteAtCursor,
 }
 
 pub fn capture_input(
@@ -73,6 +74,7 @@ pub fn capture_input(
                             tx.send(InputEvent::InsertNoteAtCursor).unwrap();
                         }
                     }
+                    KeyCode::Char('/') => tx.send(InputEvent::StartNoteAtCursor).unwrap(),
                     _ => (),
                 }
             }

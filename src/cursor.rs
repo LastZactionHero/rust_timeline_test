@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crossterm::cursor;
+
 use crate::pitch::Pitch;
 
 #[derive(Clone, Copy)]
@@ -7,6 +9,7 @@ pub struct Cursor {
     pitch: Pitch,
     time_point: u64,
     visibility: Visibility,
+    mode: CursorMode,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -15,12 +18,19 @@ enum Visibility {
     Visible,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CursorMode {
+    Move,
+    Insert(u64), // Start insert onset
+}
+
 impl Cursor {
     pub fn new(pitch: Pitch, time_point: u64) -> Cursor {
         Cursor {
             pitch,
             time_point,
             visibility: Visibility::Hidden,
+            mode: CursorMode::Move,
         }
     }
 
@@ -32,6 +42,14 @@ impl Cursor {
 
     pub fn left(self, duration: u64) -> Cursor {
         let mut next_cursor = self;
+
+        // Don't allow moving cursor before onset on insert.
+        if let CursorMode::Insert(onset_b32) = self.mode {
+            if self.time_point == onset_b32 {
+                return next_cursor;
+            }
+        }
+
         if self.time_point >= duration {
             next_cursor.time_point -= duration;
         } else {
@@ -82,8 +100,16 @@ impl Cursor {
         self.visibility == Visibility::Visible
     }
 
-    pub fn equals(self, pitch: Pitch, time_point: u64) -> bool {
-        self.pitch == pitch && self.time_point == time_point
+    pub fn visible_at(self, pitch: Pitch, time_point: u64) -> bool {
+        if !self.visible() || self.pitch != pitch {
+            return false;
+        }
+        match self.mode {
+            CursorMode::Move => time_point == self.time_point,
+            CursorMode::Insert(onset_b32) => {
+                time_point >= onset_b32 && time_point <= self.time_point
+            }
+        }
     }
 
     pub fn time_point(self) -> u64 {
@@ -92,6 +118,22 @@ impl Cursor {
 
     pub fn pitch(self) -> Pitch {
         self.pitch
+    }
+
+    pub fn mode(self) -> CursorMode {
+        self.mode
+    }
+
+    pub fn start_drag(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Insert(self.time_point);
+        cursor
+    }
+
+    pub fn end_drag(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Move;
+        cursor
     }
 }
 

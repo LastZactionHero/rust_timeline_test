@@ -163,7 +163,7 @@ impl ScoreDrawComponent {
                         );
                     }
 
-                    if self.cursor.visible() && self.cursor.equals(*pitch, time_point) {
+                    if self.cursor.visible() && self.cursor.visible_at(*pitch, time_point) {
                         self.wb(buffer, pos, col, row, 'C');
                     }
                 }

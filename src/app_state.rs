@@ -13,13 +13,6 @@ use std::{
     time::Duration,
 };
 
-use crate::draw_components::{
-    self,
-    score_draw_component::{ScoreDrawComponent, ScoreViewport},
-    status_bar_component::StatusBarComponent,
-    BoxDrawComponent, DrawComponent, DrawResult, FillComponent, NullComponent, Position,
-    VSplitDrawComponent, Window,
-};
 use crate::events::{capture_input, InputEvent};
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
@@ -27,6 +20,16 @@ use crate::player::Player;
 use crate::resolution::Resolution;
 use crate::score::Score;
 use crate::{cursor::Cursor, draw_components::ViewportDrawResult};
+use crate::{
+    cursor::CursorMode,
+    draw_components::{
+        self,
+        score_draw_component::{ScoreDrawComponent, ScoreViewport},
+        status_bar_component::StatusBarComponent,
+        BoxDrawComponent, DrawComponent, DrawResult, FillComponent, NullComponent, Position,
+        VSplitDrawComponent, Window,
+    },
+};
 
 pub struct AppState {
     score: Arc<Mutex<Score>>,
@@ -88,6 +91,7 @@ impl AppState {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn event_loop(&mut self) -> io::Result<()> {
         loop {
             match self.input_rx.recv() {
@@ -175,10 +179,22 @@ impl AppState {
                                 self.cursor.time_point(),
                                 self.score_viewport.resolution.duration_b32(),
                             );
-                            self.cursor = self
-                                .cursor
-                                .right(self.score_viewport.resolution.duration_b32());
                         }
+                        InputEvent::StartNoteAtCursor => match self.cursor.mode() {
+                            CursorMode::Move => {
+                                self.cursor = self.cursor.start_drag();
+                            }
+                            CursorMode::Insert(onset_b32) => {
+                                if onset_b32 < self.cursor.time_point() {
+                                    self.score.lock().unwrap().insert_or_remove(
+                                        self.cursor.pitch(),
+                                        onset_b32,
+                                        self.cursor.time_point() - onset_b32 + 2,
+                                    );
+                                }
+                                self.cursor = self.cursor.end_drag();
+                            }
+                        },
                     }
                     self.draw()?;
                 }
