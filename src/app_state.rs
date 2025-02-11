@@ -179,6 +179,9 @@ impl AppState {
                                 self.cursor.time_point(),
                                 self.score_viewport.resolution.duration_b32(),
                             );
+                            self.cursor = self
+                                .cursor
+                                .right(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::StartNoteAtCursor => match self.cursor.mode() {
                             CursorMode::Move => {
@@ -193,6 +196,9 @@ impl AppState {
                                     );
                                 }
                                 self.cursor = self.cursor.end_insert();
+                                self.cursor = self
+                                    .cursor
+                                    .right(self.score_viewport.resolution.duration_b32());
                             }
                         },
                         InputEvent::Cancel => self.cursor = self.cursor.cancel(),

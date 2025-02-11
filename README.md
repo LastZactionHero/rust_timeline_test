@@ -18,6 +18,9 @@
   - Yank
   - Copy
   - Slide
+  - Piano key note insert and play
+- Move playhead
+- Looping
 - Save file
 - Load file
 - Promo
