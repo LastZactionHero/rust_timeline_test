@@ -22,6 +22,7 @@ enum Visibility {
 pub enum CursorMode {
     Move,
     Insert(u64), // Start insert onset
+    Select(Pitch, u64), // Start select onset and pitch
                  // SELECT
                  // CUT
                  // YANK
@@ -112,6 +113,7 @@ impl Cursor {
             CursorMode::Insert(onset_b32) => {
                 time_point >= onset_b32 && time_point <= self.time_point
             }
+            CursorMode::Select(pitch, onset_b32) => false,
         }
     }
 
@@ -134,6 +136,18 @@ impl Cursor {
     }
 
     pub fn end_insert(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Move;
+        cursor
+    }
+
+    pub fn start_select(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Select(self.pitch, self.time_point);
+        cursor
+    }
+
+    pub fn end_select(self) -> Cursor {
         let mut cursor = self;
         cursor.mode = CursorMode::Move;
         cursor

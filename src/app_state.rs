@@ -200,6 +200,9 @@ impl AppState {
                                     .cursor
                                     .right(self.score_viewport.resolution.duration_b32());
                             }
+                            CursorMode::Select(pitch, onset_b32) => {
+                                // self.cursor = self.cursor.end_select();
+                            }
                         },
                         InputEvent::Cancel => self.cursor = self.cursor.cancel(),
                     }
