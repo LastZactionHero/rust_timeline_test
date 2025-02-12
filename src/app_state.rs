@@ -6,14 +6,16 @@ use crossterm::{
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
 };
-use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::{
+    collections::HashMap,
+    sync::{mpsc, Arc, Mutex},
+};
 use std::{
     io::{self, Write},
     time::Duration,
 };
 
-use crate::events::{capture_input, InputEvent};
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
@@ -30,6 +32,10 @@ use crate::{
         VSplitDrawComponent, Window,
     },
 };
+use crate::{
+    events::{capture_input, InputEvent},
+    selection_buffer::SelectionBuffer,
+};
 
 pub struct AppState {
     score: Arc<Mutex<Score>>,
@@ -42,6 +48,7 @@ pub struct AppState {
     buffer: Option<Vec<Vec<char>>>,
     mode: Arc<Mutex<Mode>>,
     cursor: Cursor,
+    selection_buffer: Option<SelectionBuffer>,
 }
 
 impl AppState {
@@ -62,6 +69,7 @@ impl AppState {
             buffer: None,
             mode: Arc::new(Mutex::new(Mode::Normal)),
             cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
+            selection_buffer: None,
         }
     }
 
@@ -212,7 +220,14 @@ impl AppState {
                             CursorMode::Yank => {}
                         },
                         InputEvent::Cancel => self.cursor = self.cursor.cancel(),
-                        InputEvent::Yank => {}
+                        InputEvent::Yank => {
+                            // TODO: Make a copy of the score for the selected notes
+                            // - Render selection score at the cursor position
+                            self.selection_buffer = Some(SelectionBuffer::Score(Score {
+                                bpm: 0,
+                                notes: HashMap::new(),
+                            }));
+                        }
                         InputEvent::Cut => {}
                         InputEvent::Paste => {}
                     }

@@ -13,6 +13,7 @@ mod pitch;
 mod player;
 mod resolution;
 mod score;
+mod selection_buffer;
 mod sin_wave;
 mod song;
 
