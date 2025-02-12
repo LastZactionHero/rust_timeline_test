@@ -11,6 +11,7 @@ pub struct Note {
     pub duration_b32: u64,
 }
 
+#[derive(Debug, Clone)]
 pub struct Score {
     pub bpm: u16,
     pub notes: HashMap<u64, Vec<Note>>,

@@ -1,8 +1,12 @@
-use std::fmt;
+use core::panic;
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use crossterm::cursor;
 
-use crate::pitch::Pitch;
+use crate::{pitch::Pitch, score::Score};
 
 #[derive(Clone, Copy)]
 pub struct Cursor {
@@ -21,11 +25,12 @@ enum Visibility {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CursorMode {
     Move,
-    Insert(u64), // Start insert onset
+    Insert(u64),        // Start insert onset
     Select(Pitch, u64), // Start select onset and pitch
-                 // SELECT
-                 // CUT
-                 // YANK
+    Yank,
+    // SELECT
+    // CUT
+    // YANK
 }
 
 impl Cursor {
@@ -105,15 +110,26 @@ impl Cursor {
     }
 
     pub fn visible_at(self, pitch: Pitch, time_point: u64) -> bool {
-        if !self.visible() || self.pitch != pitch {
+        if !self.visible() {
             return false;
         }
         match self.mode {
-            CursorMode::Move => time_point == self.time_point,
+            CursorMode::Move => time_point == self.time_point && self.pitch == pitch,
             CursorMode::Insert(onset_b32) => {
-                time_point >= onset_b32 && time_point <= self.time_point
+                time_point >= onset_b32 && time_point <= self.time_point && self.pitch == pitch
             }
-            CursorMode::Select(pitch, onset_b32) => false,
+            CursorMode::Select(start_pitch, onset_b32) => {
+                let (low_pitch, high_pitch) = if self.pitch > start_pitch {
+                    (start_pitch, self.pitch)
+                } else {
+                    (self.pitch, start_pitch)
+                };
+                time_point >= onset_b32
+                    && time_point <= self.time_point
+                    && pitch >= low_pitch
+                    && pitch <= high_pitch
+            }
+            CursorMode::Yank => false,
         }
     }
 

@@ -22,6 +22,9 @@ pub enum InputEvent {
     InsertNoteAtCursor,
     StartNoteAtCursor,
     Cancel,
+    Yank,
+    Cut,
+    Paste,
 }
 
 pub fn capture_input(
@@ -40,6 +43,21 @@ pub fn capture_input(
                     KeyCode::Char('p') => {
                         tx.send(InputEvent::Quit).unwrap();
                         break;
+                    }
+                    KeyCode::Char('q') => {
+                        if mode == Mode::Select {
+                            tx.send(InputEvent::Yank).unwrap();
+                        }
+                    }
+                    KeyCode::Char('w') => {
+                        if mode == Mode::Select {
+                            tx.send(InputEvent::Cut).unwrap();
+                        }
+                    }
+                    KeyCode::Char('e') => {
+                        if mode == Mode::Select {
+                            tx.send(InputEvent::Paste).unwrap();
+                        }
                     }
                     KeyCode::Up => {
                         let event = match mode {

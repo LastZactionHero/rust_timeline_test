@@ -184,9 +184,15 @@ impl AppState {
                                 .right(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::StartNoteAtCursor => match self.cursor.mode() {
-                            CursorMode::Move => {
-                                self.cursor = self.cursor.start_insert();
-                            }
+                            CursorMode::Move => match *self.mode.lock().unwrap() {
+                                Mode::Select => {
+                                    self.cursor = self.cursor.start_select();
+                                }
+                                Mode::Insert => {
+                                    self.cursor = self.cursor.start_insert();
+                                }
+                                Mode::Normal => {}
+                            },
                             CursorMode::Insert(onset_b32) => {
                                 if onset_b32 < self.cursor.time_point() {
                                     self.score.lock().unwrap().insert_or_remove(
@@ -201,10 +207,14 @@ impl AppState {
                                     .right(self.score_viewport.resolution.duration_b32());
                             }
                             CursorMode::Select(pitch, onset_b32) => {
-                                // self.cursor = self.cursor.end_select();
+                                self.cursor = self.cursor.end_select();
                             }
+                            CursorMode::Yank => {}
                         },
                         InputEvent::Cancel => self.cursor = self.cursor.cancel(),
+                        InputEvent::Yank => {}
+                        InputEvent::Cut => {}
+                        InputEvent::Paste => {}
                     }
                     self.draw()?;
                 }
