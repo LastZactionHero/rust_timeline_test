@@ -48,7 +48,7 @@ pub struct AppState {
     buffer: Option<Vec<Vec<char>>>,
     mode: Arc<Mutex<Mode>>,
     cursor: Cursor,
-    selection_buffer: Option<SelectionBuffer>,
+    selection_buffer: SelectionBuffer,
 }
 
 impl AppState {
@@ -69,7 +69,7 @@ impl AppState {
             buffer: None,
             mode: Arc::new(Mutex::new(Mode::Normal)),
             cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
-            selection_buffer: None,
+            selection_buffer: SelectionBuffer::None,
         }
     }
 
@@ -221,12 +221,17 @@ impl AppState {
                         },
                         InputEvent::Cancel => self.cursor = self.cursor.cancel(),
                         InputEvent::Yank => {
-                            // TODO: Make a copy of the score for the selected notes
-                            // - Render selection score at the cursor position
-                            self.selection_buffer = Some(SelectionBuffer::Score(Score {
-                                bpm: 0,
-                                notes: HashMap::new(),
-                            }));
+                            // TODO:  Render selection score at the cursor position
+                            let selection_range = self.cursor.selection_range().unwrap();
+                            self.selection_buffer = SelectionBuffer::Score(
+                                self.score.lock().unwrap().clone_at_selection(
+                                    selection_range.time_point_start_b32,
+                                    selection_range.time_point_end_b32,
+                                    selection_range.pitch_low,
+                                    selection_range.pitch_high,
+                                ),
+                            );
+                            self.cursor = self.cursor.yank();
                         }
                         InputEvent::Cut => {}
                         InputEvent::Paste => {}

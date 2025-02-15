@@ -33,6 +33,13 @@ pub enum CursorMode {
     // YANK
 }
 
+pub struct SelectionRange {
+    pub time_point_start_b32: u64,
+    pub time_point_end_b32: u64,
+    pub pitch_low: Pitch,
+    pub pitch_high: Pitch,
+}
+
 impl Cursor {
     pub fn new(pitch: Pitch, time_point: u64) -> Cursor {
         Cursor {
@@ -114,7 +121,9 @@ impl Cursor {
             return false;
         }
         match self.mode {
-            CursorMode::Move => time_point == self.time_point && self.pitch == pitch,
+            CursorMode::Move | CursorMode::Yank => {
+                time_point == self.time_point && self.pitch == pitch
+            }
             CursorMode::Insert(onset_b32) => {
                 time_point >= onset_b32 && time_point <= self.time_point && self.pitch == pitch
             }
@@ -129,7 +138,6 @@ impl Cursor {
                     && pitch >= low_pitch
                     && pitch <= high_pitch
             }
-            CursorMode::Yank => false,
         }
     }
 
@@ -173,6 +181,34 @@ impl Cursor {
         let mut cursor = self;
         cursor.mode = CursorMode::Move;
         cursor
+    }
+
+    pub fn yank(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Yank;
+        cursor
+    }
+
+    pub fn selection_range(self) -> Option<SelectionRange> {
+        if let CursorMode::Select(pitch, time_point_b32) = self.mode {
+            let (time_point_start_b32, time_point_end_b32) = if time_point_b32 < self.time_point {
+                (time_point_b32, self.time_point)
+            } else {
+                (self.time_point, time_point_b32)
+            };
+            let (pitch_low, pitch_high) = if pitch < self.pitch {
+                (pitch, self.pitch)
+            } else {
+                (self.pitch, pitch)
+            };
+            return Some(SelectionRange {
+                time_point_start_b32,
+                time_point_end_b32,
+                pitch_low,
+                pitch_high,
+            });
+        }
+        None
     }
 }
 

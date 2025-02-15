@@ -70,4 +70,31 @@ impl Score {
             }
         }
     }
+
+    // Creates a new Score with just notes between selection times and pitches.
+    pub fn clone_at_selection(
+        &self,
+        time_point_start_b32: u64, // Inclusive
+        time_point_end_b32: u64,   // Exclusive
+        pitch_low: Pitch,
+        pitch_high: Pitch,
+    ) -> Score {
+        let mut new_score = Score {
+            bpm: self.bpm,
+            notes: HashMap::new(),
+        };
+
+        for (&onset_b32, notes_at_onset) in &self.notes {
+            if onset_b32 >= time_point_start_b32 && onset_b32 < time_point_end_b32 {
+                for note in notes_at_onset {
+                    if note.pitch >= pitch_low && note.pitch <= pitch_high {
+                        // Assuming Pitch implements PartialOrd
+                        new_score.insert_or_remove(note.pitch, note.onset_b32, note.duration_b32);
+                    }
+                }
+            }
+        }
+
+        new_score
+    }
 }
