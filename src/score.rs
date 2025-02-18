@@ -2,7 +2,10 @@
 
 use std::{collections::HashMap, f32::MAX};
 
-use crate::{pitch::Pitch, selection_buffer};
+use crate::{
+    pitch::{Pitch, Tone},
+    selection_buffer,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Note {
@@ -240,5 +243,138 @@ impl Score {
         }
 
         last_final_time - first_onset
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_score() -> Score {
+        let mut score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+        };
+        // Add some test notes
+        score.insert(Pitch::new(Tone::C, 4), 0, 32); // C4 (MIDI 60)
+        score.insert(Pitch::new(Tone::E, 4), 32, 32); // E4 (MIDI 64)
+        score.insert(Pitch::new(Tone::G, 4), 64, 32); // G4 (MIDI 67)
+        score
+    }
+
+    #[test]
+    fn test_notes_starting_at_time() {
+        let score = create_test_score();
+
+        let notes = score.notes_starting_at_time(0);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].pitch, Pitch::new(Tone::C, 4));
+
+        let empty_notes = score.notes_starting_at_time(16);
+        assert!(empty_notes.is_empty());
+    }
+
+    #[test]
+    fn test_time_within_song() {
+        let score = create_test_score();
+
+        assert!(score.time_within_song(0));
+        assert!(score.time_within_song(64));
+        assert!(score.time_within_song(95));
+        assert!(!score.time_within_song(96)); // Last note ends at 96
+        assert!(!score.time_within_song(128));
+    }
+
+    #[test]
+    fn test_insert_or_remove() {
+        let mut score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+        };
+
+        // Test insertion
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
+        assert_eq!(score.notes_starting_at_time(0).len(), 1);
+
+        // Test removal
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
+        assert_eq!(score.notes_starting_at_time(0).len(), 0);
+    }
+
+    #[test]
+    fn test_clone_at_selection() {
+        let score = create_test_score();
+
+        let selected =
+            score.clone_at_selection(0, 64, Pitch::new(Tone::C, 4), Pitch::new(Tone::E, 4));
+
+        assert_eq!(selected.notes_starting_at_time(0).len(), 1);
+        assert_eq!(selected.notes_starting_at_time(32).len(), 1);
+        assert_eq!(selected.notes_starting_at_time(64).len(), 0); // G4 is outside pitch range
+    }
+
+    #[test]
+    fn test_translate() {
+        let score = create_test_score();
+
+        // Test translation to later time
+        let translated = score.translate(Some(32));
+        assert!(translated.notes_starting_at_time(0).is_empty());
+        assert_eq!(
+            translated.notes_starting_at_time(32)[0].pitch,
+            Pitch::new(Tone::C, 4)
+        );
+
+        // Test translation with None
+        let no_translation = score.translate(None);
+        assert_eq!(no_translation.notes_starting_at_time(0).len(), 1);
+    }
+
+    #[test]
+    fn test_insert() {
+        let mut score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+        };
+
+        // Test basic insertion
+        score.insert(Pitch::new(Tone::C, 4), 0, 32);
+        assert_eq!(score.notes_starting_at_time(0).len(), 1);
+
+        // Test overlapping notes merge
+        score.insert(Pitch::new(Tone::C, 4), 16, 32);
+        let notes = score.notes_starting_at_time(0);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].duration_b32, 48); // Notes should merge
+    }
+
+    #[test]
+    fn test_merge_down() {
+        let mut score1 = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+        };
+        score1.insert(Pitch::new(Tone::C, 4), 0, 32);
+
+        let mut score2 = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+        };
+        score2.insert(Pitch::new(Tone::E, 4), 0, 32);
+
+        let merged = score1.merge_down(&score2);
+        assert_eq!(merged.notes_starting_at_time(0).len(), 2);
+    }
+
+    #[test]
+    fn test_duration() {
+        let empty_score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+        };
+        assert_eq!(empty_score.duration(), 0);
+
+        let score = create_test_score();
+        assert_eq!(score.duration(), 96); // From start of first note to end of last note
     }
 }
