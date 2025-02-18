@@ -14,10 +14,24 @@ pub struct Note {
     pub duration_b32: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NoteState {
+    Onset,
+    Sustain,
+    Release
+}
+
+#[derive(Debug, Clone)]
+pub struct ActiveNote {
+    pub note: Note,
+    pub state: NoteState,
+}
+
 #[derive(Debug, Clone)]
 pub struct Score {
     pub bpm: u16,
     pub notes: HashMap<u64, Vec<Note>>,
+    pub active_notes: HashMap<u64, Vec<ActiveNote>>,
 }
 
 impl Score {
@@ -53,6 +67,12 @@ impl Score {
             }
         }
         if let Some(matching_note_index) = note_found_at_index {
+            let removed_note = notes_starting_at_time[matching_note_index];
+            for t in removed_note.onset_b32..=removed_note.onset_b32 + removed_note.duration_b32 {
+                if let Some(notes) = self.active_notes.get_mut(&t) {
+                    notes.retain(|active| active.note.pitch != pitch);
+                }
+            }
             notes_starting_at_time.remove(matching_note_index);
             self.notes.insert(onset_b32, notes_starting_at_time);
             return;
@@ -72,6 +92,8 @@ impl Score {
                 self.notes.insert(onset_b32, vec![note_to_insert]);
             }
         }
+
+        self.update_active_notes(note_to_insert);
     }
 
     // Creates a new Score with just notes between selection times and pitches.
@@ -85,6 +107,7 @@ impl Score {
         let mut new_score = Score {
             bpm: self.bpm,
             notes: HashMap::new(),
+            active_notes: HashMap::new(),
         };
 
         for (&onset_b32, notes_at_onset) in &self.notes {
@@ -107,6 +130,7 @@ impl Score {
                 let mut new_score = Score {
                     bpm: self.bpm,
                     notes: HashMap::new(),
+                    active_notes: HashMap::new(),
                 };
 
                 let mut min_onset = u64::MAX;
@@ -208,6 +232,8 @@ impl Score {
                 self.notes.insert(merged_onset, vec![merged_note]);
             }
         }
+
+        self.update_active_notes(merged_note);
     }
 
     pub fn merge_down(&self, other: &Score) -> Score {
@@ -244,9 +270,49 @@ impl Score {
 
         last_final_time - first_onset
     }
+
+    // Helper method to update active_notes when inserting/removing notes
+    fn update_active_notes(&mut self, note: Note) {
+        // Clear any existing entries for this pitch in the affected time range
+        for t in note.onset_b32..=note.onset_b32 + note.duration_b32 {
+            if let Some(notes) = self.active_notes.get_mut(&t) {
+                notes.retain(|active| active.note.pitch != note.pitch);
+            }
+        }
+
+        // Add new entries
+        for t in note.onset_b32..=note.onset_b32 + note.duration_b32 {
+            let state = if t == note.onset_b32 {
+                NoteState::Onset
+            } else if t == note.onset_b32 + note.duration_b32 {
+                NoteState::Release
+            } else {
+                NoteState::Sustain
+            };
+
+            let active_note = ActiveNote {
+                note,
+                state,
+            };
+
+            self.active_notes
+                .entry(t)
+                .or_insert_with(Vec::new)
+                .push(active_note);
+        }
+    }
+
+    // New method to get active notes at a specific time
+    pub fn notes_active_at_time(&self, time_point_b32: u64) -> Vec<ActiveNote> {
+        self.active_notes
+            .get(&time_point_b32)
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
 
@@ -254,6 +320,7 @@ mod tests {
         let mut score = Score {
             bpm: 120,
             notes: HashMap::new(),
+            active_notes: HashMap::new(),
         };
         // Add some test notes
         score.insert(Pitch::new(Tone::C, 4), 0, 32); // C4 (MIDI 60)
@@ -290,6 +357,7 @@ mod tests {
         let mut score = Score {
             bpm: 120,
             notes: HashMap::new(),
+            active_notes: HashMap::new(),
         };
 
         // Test insertion
@@ -335,6 +403,7 @@ mod tests {
         let mut score = Score {
             bpm: 120,
             notes: HashMap::new(),
+            active_notes: HashMap::new(),
         };
 
         // Test basic insertion
@@ -353,12 +422,14 @@ mod tests {
         let mut score1 = Score {
             bpm: 120,
             notes: HashMap::new(),
+            active_notes: HashMap::new(),
         };
         score1.insert(Pitch::new(Tone::C, 4), 0, 32);
 
         let mut score2 = Score {
             bpm: 120,
             notes: HashMap::new(),
+            active_notes: HashMap::new(),
         };
         score2.insert(Pitch::new(Tone::E, 4), 0, 32);
 
@@ -371,10 +442,117 @@ mod tests {
         let empty_score = Score {
             bpm: 120,
             notes: HashMap::new(),
+            active_notes: HashMap::new(),
         };
         assert_eq!(empty_score.duration(), 0);
 
         let score = create_test_score();
         assert_eq!(score.duration(), 96); // From start of first note to end of last note
+    }
+
+    #[test]
+    fn test_note_states() {
+        let mut score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        };
+
+        // Add a note from time 0 to 32
+        score.insert(Pitch::new(Tone::C, 4), 0, 32);
+
+        // Test onset
+        let notes_at_0 = score.notes_active_at_time(0);
+        assert_eq!(notes_at_0.len(), 1);
+        assert_eq!(notes_at_0[0].state, NoteState::Onset);
+        assert_eq!(notes_at_0[0].note.pitch, Pitch::new(Tone::C, 4));
+
+        // Test sustain
+        let notes_at_16 = score.notes_active_at_time(16);
+        assert_eq!(notes_at_16.len(), 1);
+        assert_eq!(notes_at_16[0].state, NoteState::Sustain);
+        assert_eq!(notes_at_16[0].note.pitch, Pitch::new(Tone::C, 4));
+
+        // Test release
+        let notes_at_32 = score.notes_active_at_time(32);
+        assert_eq!(notes_at_32.len(), 1);
+        assert_eq!(notes_at_32[0].state, NoteState::Release);
+        assert_eq!(notes_at_32[0].note.pitch, Pitch::new(Tone::C, 4));
+
+        // Test no notes active
+        let notes_at_33 = score.notes_active_at_time(33);
+        assert_eq!(notes_at_33.len(), 0);
+    }
+
+    #[test]
+    fn test_overlapping_notes() {
+        let mut score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        };
+
+        // Add two overlapping notes of the same pitch
+        score.insert(Pitch::new(Tone::C, 4), 0, 32);
+        score.insert(Pitch::new(Tone::C, 4), 16, 32);
+
+        // Should be merged into one longer note
+        let notes_at_0 = score.notes_active_at_time(0);
+        assert_eq!(notes_at_0.len(), 1);
+        assert_eq!(notes_at_0[0].state, NoteState::Onset);
+
+        let notes_at_48 = score.notes_active_at_time(48);
+        assert_eq!(notes_at_48.len(), 1);
+        assert_eq!(notes_at_48[0].state, NoteState::Release);
+
+        // Test that the note persists through the middle
+        let notes_at_24 = score.notes_active_at_time(24);
+        assert_eq!(notes_at_24.len(), 1);
+        assert_eq!(notes_at_24[0].state, NoteState::Sustain);
+    }
+
+    #[test]
+    fn test_remove_note() {
+        let mut score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        };
+
+        // Add and then remove a note
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
+        
+        // Verify note exists
+        assert_eq!(score.notes_active_at_time(16).len(), 1);
+        
+        // Remove the note
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
+        
+        // Verify note is gone from all time points
+        assert_eq!(score.notes_active_at_time(0).len(), 0);
+        assert_eq!(score.notes_active_at_time(16).len(), 0);
+        assert_eq!(score.notes_active_at_time(32).len(), 0);
+    }
+
+    #[test]
+    fn test_multiple_pitches() {
+        let mut score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        };
+
+        // Add two notes at different pitches at the same time
+        score.insert(Pitch::new(Tone::C, 4), 0, 32);
+        score.insert(Pitch::new(Tone::E, 4), 0, 32);
+
+        let notes_at_0 = score.notes_active_at_time(0);
+        assert_eq!(notes_at_0.len(), 2);
+        assert!(notes_at_0.iter().all(|n| n.state == NoteState::Onset));
+        
+        // Verify pitches are different
+        let pitches: Vec<Pitch> = notes_at_0.iter().map(|n| n.note.pitch).collect();
+        assert!(pitches.contains(&Pitch::new(Tone::C, 4)));
+        assert!(pitches.contains(&Pitch::new(Tone::E, 4)));
     }
 }

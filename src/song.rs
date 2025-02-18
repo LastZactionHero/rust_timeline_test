@@ -7,8 +7,11 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 pub fn create_song() -> Score {
-    let mut notes: HashMap<u64, Vec<Note>> = HashMap::new();
-    let mut bpm: u16 = 120; // Default BPM
+    let mut score = Score {
+        bpm: 120, // Default BPM
+        notes: HashMap::new(),
+        active_notes: HashMap::new(),
+    };
 
     let file = File::open("song.txt").expect("Could not open song.txt");
     let reader = BufReader::new(file);
@@ -18,7 +21,7 @@ pub fn create_song() -> Score {
         let line = line.trim();
 
         if line.starts_with("BPM:") {
-            bpm = line[4..].trim().parse().expect("Invalid BPM format");
+            score.bpm = line[4..].trim().parse().expect("Invalid BPM format");
         } else if !line.is_empty() {
             let parts: Vec<&str> = line.split(':').map(|s| s.trim()).collect();
             if parts.len() == 2 {
@@ -51,18 +54,17 @@ pub fn create_song() -> Score {
                             .parse()
                             .expect("Invalid octave format");
 
-                        let note = Note {
-                            pitch: Pitch::new(tone, octave as u16),
-                            duration_b32: duration,
-                            onset_b32: onset,
-                        };
-
-                        notes.entry(onset).or_insert_with(Vec::new).push(note);
+                        // Use insert_or_remove instead of directly manipulating the notes HashMap
+                        score.insert_or_remove(
+                            Pitch::new(tone, octave as u16),
+                            onset,
+                            duration
+                        );
                     }
                 }
             }
         }
     }
 
-    Score { bpm, notes }
+    score
 }
