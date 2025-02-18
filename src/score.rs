@@ -273,18 +273,11 @@ impl Score {
 
     // Helper method to update active_notes when inserting/removing notes
     fn update_active_notes(&mut self, note: Note) {
-        // Clear any existing entries for this pitch in the affected time range
-        for t in note.onset_b32..=note.onset_b32 + note.duration_b32 {
-            if let Some(notes) = self.active_notes.get_mut(&t) {
-                notes.retain(|active| active.note.pitch != note.pitch);
-            }
-        }
-
         // Add new entries
-        for t in note.onset_b32..=note.onset_b32 + note.duration_b32 {
+        for t in note.onset_b32..=note.onset_b32 + note.duration_b32 - 1 {
             let state = if t == note.onset_b32 {
                 NoteState::Onset
-            } else if t == note.onset_b32 + note.duration_b32 {
+            } else if t == note.onset_b32 + note.duration_b32 - 1 {
                 NoteState::Release
             } else {
                 NoteState::Sustain
@@ -294,6 +287,16 @@ impl Score {
                 note,
                 state,
             };
+            
+            if let Some(notes) = self.active_notes.get_mut(&t) {
+                for note in notes {
+                    if note.note.pitch == active_note.note.pitch {
+                        if note.state == NoteState::Sustain {
+                            continue;
+                        }
+                    }
+                }
+            }
 
             self.active_notes
                 .entry(t)

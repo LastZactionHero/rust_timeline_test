@@ -9,8 +9,9 @@ use crate::events::InputEvent;
 use crate::pitch::Pitch;
 use crate::player::{PlayState, Player};
 use crate::resolution::Resolution;
-use crate::score::{Note, Score};
+use crate::score::{Note, Score, NoteState, ActiveNote};
 use crate::selection_buffer::SelectionBuffer;
+use log::debug;
 
 pub struct ScoreDrawComponent {
     score: Arc<Mutex<Score>>,
@@ -57,6 +58,9 @@ impl fmt::Display for ScoreViewport {
 
 impl DrawComponent for ScoreDrawComponent {
     fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> Vec<DrawResult> {
+        debug!("Drawing score at position: x={}, y={}, w={}, h={}", 
+            pos.x, pos.y, pos.w, pos.h);
+            
         self.draw_pitches(buffer, pos);
         let viewport_draw_result = self.draw_score(
             buffer,
@@ -112,6 +116,7 @@ impl ScoreDrawComponent {
 
     fn draw_score(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> ViewportDrawResult {
         let pitches = self.visible_pitches(pos);
+        debug!("Drawing score with {} visible pitches", pitches.len());
 
         for col in 0..pos.w - 1 {
             let bar_col = col % (self.score_viewport.resolution.bar_length_in_beats()) == 0;
@@ -144,59 +149,60 @@ impl ScoreDrawComponent {
                 time_point += 1;
             }
         }
+
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
+            let mut col_states: HashMap<(usize, Pitch), NoteState> = HashMap::new();
+            
             for _ in 0..self.score_viewport.resolution.duration_b32() {
-                let active_notes: HashMap<Pitch, Note> = self
-                    .score
-                    .lock()
-                    .unwrap()
-                    .notes_starting_at_time(time_point)
+                let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point);
+                
+                for (row, pitch) in pitches.iter().enumerate() {
+                    if let Some(active_note) = active_notes.iter().find(|note| note.note.pitch == *pitch) {
+                        let current_state = col_states.entry((row, *pitch)).or_insert(NoteState::Sustain);
+                        match active_note.state {
+                            NoteState::Onset | NoteState::Release => *current_state = active_note.state,
+                            NoteState::Sustain => {
+                                if *current_state == NoteState::Sustain {
+                                    *current_state = NoteState::Sustain
+                                }
+                            }
+                        }
+                    }
+                }
+                time_point += 1;
+            }
+
+            for ((row, pitch), state) in col_states {
+                let note_char = match state {
+                    NoteState::Onset => '█',
+                    NoteState::Sustain => '░',
+                    NoteState::Release => '▒',
+                };
+                self.wb(buffer, pos, col, row, note_char);
+            }
+
+            if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
+                let selected_notes = selection_buffer_score.notes_active_at_time(time_point);
+                let selected_notes_map: HashMap<Pitch, ActiveNote> = selected_notes
                     .into_iter()
-                    .map(|note| (note.pitch, note))
+                    .map(|active_note| (active_note.note.pitch, active_note))
                     .collect();
 
                 for (row, pitch) in pitches.iter().enumerate() {
-                    if let Some(note) = active_notes.get(pitch) {
-                        self.wb_string(
-                            buffer,
-                            pos,
-                            col,
-                            row,
-                            self.note_string(note, time_point, &self.score_viewport.resolution),
-                        );
+                    if let Some(active_note) = selected_notes_map.get(pitch) {
+                        let note_char = match active_note.state {
+                            NoteState::Onset => '█',
+                            NoteState::Sustain => '░',
+                            NoteState::Release => '▒',
+                        };
+                        self.wb(buffer, pos, col, row, note_char);
                     }
 
                     if self.cursor.visible() && self.cursor.visible_at(*pitch, time_point) {
                         self.wb(buffer, pos, col, row, 'C');
                     }
                 }
-
-                if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
-                    let selected_notes: HashMap<Pitch, Note> = selection_buffer_score
-                        .notes_starting_at_time(time_point)
-                        .into_iter()
-                        .map(|note| (note.pitch, note))
-                        .collect();
-
-                    for (row, pitch) in pitches.iter().enumerate() {
-                        if let Some(note) = selected_notes.get(pitch) {
-                            self.wb_string(
-                                buffer,
-                                pos,
-                                col,
-                                row,
-                                self.note_string(note, time_point, &self.score_viewport.resolution),
-                            );
-                        }
-
-                        if self.cursor.visible() && self.cursor.visible_at(*pitch, time_point) {
-                            self.wb(buffer, pos, col, row, 'C');
-                        }
-                    }
-                }
-
-                time_point += 1;
             }
         }
 
@@ -212,23 +218,5 @@ impl ScoreDrawComponent {
         for (i, pitch) in self.visible_pitches(pos).iter().enumerate() {
             self.wb_string(buffer, pos, 0, i, pitch.as_str());
         }
-    }
-
-    fn note_string(&self, note: &Note, time_point: u64, resolution: &Resolution) -> String {
-        let mut note_str = String::new();
-        let note_len_chars = std::cmp::max(1, note.duration_b32 / resolution.duration_b32());
-        for i in 0..note_len_chars {
-            let note_char =
-                if i == (note_len_chars - 1) && time_point == note.onset_b32 && note_len_chars == 1
-                {
-                    '▉'
-                } else if i == 0 {
-                    '█'
-                } else {
-                    '▒'
-                };
-            note_str.push(note_char);
-        }
-        note_str
     }
 }
