@@ -116,8 +116,11 @@ impl ScoreDrawComponent {
 
     fn draw_score(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> ViewportDrawResult {
         let pitches = self.visible_pitches(pos);
+        let mut time_point = self.score_viewport.time_point;
         debug!("Drawing score with {} visible pitches", pitches.len());
+        
 
+        // Draw the empty score.
         for col in 0..pos.w - 1 {
             let bar_col = col % (self.score_viewport.resolution.bar_length_in_beats()) == 0;
             for (row, _pitch) in pitches.iter().enumerate() {
@@ -138,6 +141,7 @@ impl ScoreDrawComponent {
             }
         }
 
+        // Draw the playhead.
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
@@ -170,6 +174,27 @@ impl ScoreDrawComponent {
                         }
                     }
                 }
+
+                if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
+                    let selected_notes = selection_buffer_score.notes_active_at_time(time_point);
+                    let selected_notes_map: HashMap<Pitch, ActiveNote> = selected_notes
+                        .into_iter()
+                        .map(|active_note| (active_note.note.pitch, active_note))
+                        .collect();
+
+                    for (row, pitch) in pitches.iter().enumerate() {
+                        if let Some(active_note) = selected_notes_map.get(pitch) {
+                            let current_state = col_states.entry((row, *pitch)).or_insert(NoteState::Sustain);
+                            *current_state = active_note.state;
+                            match active_note.state {
+                                NoteState::Onset => *current_state = NoteState::Onset,
+                                NoteState::Sustain => *current_state = NoteState::Sustain,
+                                NoteState::Release => *current_state = NoteState::Release,
+                            }
+                        }
+                    }
+                }
+
                 time_point += 1;
             }
 
@@ -181,29 +206,17 @@ impl ScoreDrawComponent {
                 };
                 self.wb(buffer, pos, col, row, note_char);
             }
+        }
 
-            if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
-                let selected_notes = selection_buffer_score.notes_active_at_time(time_point);
-                let selected_notes_map: HashMap<Pitch, ActiveNote> = selected_notes
-                    .into_iter()
-                    .map(|active_note| (active_note.note.pitch, active_note))
-                    .collect();
-
-                for (row, pitch) in pitches.iter().enumerate() {
-                    if let Some(active_note) = selected_notes_map.get(pitch) {
-                        let note_char = match active_note.state {
-                            NoteState::Onset => '█',
-                            NoteState::Sustain => '░',
-                            NoteState::Release => '▒',
-                        };
-                        self.wb(buffer, pos, col, row, note_char);
-                    }
-
-                    if self.cursor.visible() && self.cursor.visible_at(*pitch, time_point) {
-                        self.wb(buffer, pos, col, row, 'C');
-                    }
+        // Draw the cursor - iterate over each time point and pitch.
+        let mut time_point = self.score_viewport.time_point;
+        for col in 0..pos.w - 1 {
+            for (row, pitch) in pitches.iter().enumerate() {
+                if self.cursor.visible_at(*pitch, time_point) {
+                    self.wb(buffer, pos, col, row, 'C');
                 }
             }
+            time_point += self.score_viewport.resolution.duration_b32();
         }
 
         ViewportDrawResult {
