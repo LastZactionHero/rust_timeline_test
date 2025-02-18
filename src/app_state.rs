@@ -229,18 +229,19 @@ impl AppState {
                         }
                         InputEvent::Yank => {
                             let selection_range = self.cursor.selection_range().unwrap();
-                            self.selection_buffer = SelectionBuffer::Score(
-                                self.score.lock().unwrap().clone_at_selection(
-                                    selection_range.time_point_start_b32,
-                                    selection_range.time_point_end_b32,
-                                    selection_range.pitch_low,
-                                    selection_range.pitch_high,
-                                ),
+                            let selection_score = self.score.lock().unwrap().clone_at_selection(
+                                selection_range.time_point_start_b32,
+                                selection_range.time_point_end_b32,
+                                selection_range.pitch_low,
+                                selection_range.pitch_high,
                             );
                             self.cursor = self
                                 .cursor
                                 .yank()
                                 .right(self.score_viewport.resolution.duration_b32());
+                            self.selection_buffer = SelectionBuffer::Score(
+                                selection_score.translate(Some(self.cursor.time_point()))
+                            );
                         }
                         InputEvent::Cut => {}
                         InputEvent::Paste => {
