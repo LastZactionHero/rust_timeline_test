@@ -1,6 +1,7 @@
 // score.rs
 
 use std::{collections::HashMap, f32::MAX};
+use log::debug;
 
 use crate::{
     pitch::{Pitch, Tone},
@@ -307,10 +308,72 @@ impl Score {
 
     // New method to get active notes at a specific time
     pub fn notes_active_at_time(&self, time_point_b32: u64) -> Vec<ActiveNote> {
-        self.active_notes
+        let result = self.active_notes
             .get(&time_point_b32)
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or_default();
+        result
+    }
+
+    pub fn delete_in_selection(
+        &mut self,
+        time_point_start_b32: u64,
+        time_point_end_b32: u64,
+        pitch_low: Pitch,
+        pitch_high: Pitch,
+    ) {
+        debug!("Deleting notes between {} and {} with pitch range {:?} to {:?}", 
+            time_point_start_b32, time_point_end_b32, pitch_low, pitch_high);
+
+        let mut onsets_to_remove: Vec<u64> = Vec::new();
+        let mut notes_to_keep: HashMap<u64, Vec<Note>> = HashMap::new();
+
+        // Identify notes to remove and keep
+        for (&onset_b32, notes_at_onset) in &self.notes {
+            if onset_b32 >= time_point_start_b32 && onset_b32 < time_point_end_b32 {
+                let (keep, remove): (Vec<Note>, Vec<Note>) = notes_at_onset
+                    .iter()
+                    .cloned()
+                    .partition(|note| note.pitch < pitch_low || note.pitch > pitch_high);
+
+                debug!("At onset {}: keeping {} notes, removing {} notes", 
+                    onset_b32, keep.len(), remove.len());
+
+                if !keep.is_empty() {
+                    notes_to_keep.insert(onset_b32, keep);
+                } else {
+                    onsets_to_remove.push(onset_b32);
+                }
+            }
+        }
+
+        debug!("Total onsets to remove: {}", onsets_to_remove.len());
+        debug!("Total onsets with kept notes: {}", notes_to_keep.len());
+
+        // Remove notes and update active_notes
+        for onset_b32 in onsets_to_remove {
+            self.notes.remove(&onset_b32);
+        }
+
+        // Update remaining onsets with kept notes
+        for (onset_b32, notes) in notes_to_keep {
+            self.notes.insert(onset_b32, notes);
+        }
+
+        // Collect all remaining notes first
+        let all_notes: Vec<Note> = self.notes.values()
+            .flat_map(|notes| notes.iter().cloned())
+            .collect();
+
+        debug!("Rebuilding active_notes with {} total notes", all_notes.len());
+
+        // Clear and rebuild active_notes
+        self.active_notes.clear();
+        for note in all_notes {
+            self.update_active_notes(note);
+        }
+
+        debug!("Finished rebuilding active_notes");
     }
 }
 

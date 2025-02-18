@@ -25,6 +25,7 @@ pub enum InputEvent {
     Yank,
     Cut,
     Paste,
+    Delete,
 }
 
 pub fn capture_input(
@@ -95,6 +96,11 @@ pub fn capture_input(
                         }
                     }
                     KeyCode::Char('/') => tx.send(InputEvent::StartNoteAtCursor).unwrap(),
+                    KeyCode::Char('r') => {
+                        if mode == Mode::Select {
+                            tx.send(InputEvent::Delete).unwrap();
+                        }
+                    },
                     _ => (),
                 }
             }

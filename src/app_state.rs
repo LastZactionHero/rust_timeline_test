@@ -259,6 +259,17 @@ impl AppState {
                                 );
                             }
                         }
+                        InputEvent::Delete => {
+                            if let Some(selection_range) = self.cursor.selection_range() {
+                                self.score.lock().unwrap().delete_in_selection(
+                                    selection_range.time_point_start_b32,
+                                    selection_range.time_point_end_b32,
+                                    selection_range.pitch_low,
+                                    selection_range.pitch_high,
+                                );
+                                self.cursor = self.cursor.end_select();
+                            }
+                        }
                     }
                     self.draw()?;
                 }
