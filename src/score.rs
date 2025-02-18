@@ -140,12 +140,79 @@ impl Score {
         }
     }
 
+    pub fn insert(&mut self, pitch: Pitch, onset_b32: u64, duration_b32: u64) {
+        let end_b32 = onset_b32 + duration_b32;
+        let mut overlapping_notes: Vec<(u64, Note)> = Vec::new();
+
+        // Find all overlapping notes with the same pitch
+        for (&existing_onset, notes) in &self.notes {
+            for note in notes {
+                if note.pitch == pitch {
+                    let existing_end = note.onset_b32 + note.duration_b32;
+                    // Check if notes strictly overlap (not just adjacent)
+                    if !(existing_end <= onset_b32 || note.onset_b32 >= end_b32) {
+                        overlapping_notes.push((existing_onset, *note));
+                    }
+                }
+            }
+        }
+
+        // Remove all overlapping notes
+        for (onset, note) in &overlapping_notes {
+            if let Some(notes) = self.notes.get_mut(onset) {
+                notes.retain(|n| n.pitch != note.pitch);
+                if notes.is_empty() {
+                    self.notes.remove(onset);
+                }
+            }
+        }
+
+        // Calculate merged note boundaries
+        let merged_onset = if overlapping_notes.is_empty() {
+            onset_b32
+        } else {
+            overlapping_notes
+                .iter()
+                .map(|(_, note)| note.onset_b32)
+                .min()
+                .unwrap()
+                .min(onset_b32)
+        };
+
+        let merged_end = if overlapping_notes.is_empty() {
+            end_b32
+        } else {
+            overlapping_notes
+                .iter()
+                .map(|(_, note)| note.onset_b32 + note.duration_b32)
+                .max()
+                .unwrap()
+                .max(end_b32)
+        };
+
+        // Insert the merged note
+        let merged_note = Note {
+            pitch,
+            onset_b32: merged_onset,
+            duration_b32: merged_end - merged_onset,
+        };
+
+        match self.notes.get_mut(&merged_onset) {
+            Some(notes_at_onset) => {
+                notes_at_onset.push(merged_note);
+            }
+            None => {
+                self.notes.insert(merged_onset, vec![merged_note]);
+            }
+        }
+    }
+
     pub fn merge_down(&self, other: &Score) -> Score {
-        let mut merged_score = self.clone(); // Start with a copy of the first score
+        let mut merged_score = self.clone();
 
         for (&onset_b32, notes_at_onset) in &other.notes {
             for note in notes_at_onset {
-                merged_score.insert_or_remove(note.pitch, onset_b32, note.duration_b32);
+                merged_score.insert(note.pitch, onset_b32, note.duration_b32);
             }
         }
 
