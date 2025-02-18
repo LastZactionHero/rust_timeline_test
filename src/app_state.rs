@@ -175,11 +175,15 @@ impl AppState {
                             self.cursor = self
                                 .cursor
                                 .left(self.score_viewport.resolution.duration_b32());
+                            self.selection_buffer =
+                                self.selection_buffer.translate_to(self.cursor.time_point());
                         }
                         InputEvent::CursorRight => {
                             self.cursor = self
                                 .cursor
                                 .right(self.score_viewport.resolution.duration_b32());
+                            self.selection_buffer =
+                                self.selection_buffer.translate_to(self.cursor.time_point());
                         }
                         InputEvent::InsertNoteAtCursor => {
                             self.score.lock().unwrap().insert_or_remove(
@@ -219,9 +223,11 @@ impl AppState {
                             }
                             CursorMode::Yank => {}
                         },
-                        InputEvent::Cancel => self.cursor = self.cursor.cancel(),
+                        InputEvent::Cancel => {
+                            self.cursor = self.cursor.cancel();
+                            self.selection_buffer = SelectionBuffer::None;
+                        }
                         InputEvent::Yank => {
-                            // TODO:  Render selection score at the cursor position
                             let selection_range = self.cursor.selection_range().unwrap();
                             self.selection_buffer = SelectionBuffer::Score(
                                 self.score.lock().unwrap().clone_at_selection(
@@ -231,10 +237,27 @@ impl AppState {
                                     selection_range.pitch_high,
                                 ),
                             );
-                            self.cursor = self.cursor.yank();
+                            self.cursor = self
+                                .cursor
+                                .yank()
+                                .right(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::Cut => {}
-                        InputEvent::Paste => {}
+                        InputEvent::Paste => {
+                            if let SelectionBuffer::Score(ref selection_buffer_score) =
+                                self.selection_buffer
+                            {
+                                let mut score_guard = self.score.lock().unwrap();
+                                *score_guard = score_guard.merge_down(selection_buffer_score);
+
+                                let duration = selection_buffer_score.duration();
+                                self.cursor = self.cursor.right(duration);
+                                self.selection_buffer = SelectionBuffer::Score(
+                                    selection_buffer_score
+                                        .translate(Some(self.cursor.time_point())),
+                                );
+                            }
+                        }
                     }
                     self.draw()?;
                 }
@@ -265,6 +288,7 @@ impl AppState {
                     self.score_viewport,
                     self.input_tx.clone(),
                     self.cursor,
+                    self.selection_buffer.clone(),
                 )),
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,

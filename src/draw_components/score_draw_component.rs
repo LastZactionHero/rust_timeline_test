@@ -10,6 +10,7 @@ use crate::pitch::Pitch;
 use crate::player::{PlayState, Player};
 use crate::resolution::Resolution;
 use crate::score::{Note, Score};
+use crate::selection_buffer::SelectionBuffer;
 
 pub struct ScoreDrawComponent {
     score: Arc<Mutex<Score>>,
@@ -17,6 +18,7 @@ pub struct ScoreDrawComponent {
     score_viewport: ScoreViewport,
     event_tx: mpsc::Sender<InputEvent>,
     cursor: Cursor,
+    selection_buffer: SelectionBuffer,
 }
 
 #[derive(Clone, Copy)]
@@ -76,6 +78,7 @@ impl ScoreDrawComponent {
         score_viewport: ScoreViewport,
         tx: mpsc::Sender<InputEvent>,
         cursor: Cursor,
+        selection_buffer: SelectionBuffer,
     ) -> ScoreDrawComponent {
         ScoreDrawComponent {
             score,
@@ -83,6 +86,7 @@ impl ScoreDrawComponent {
             score_viewport,
             event_tx: tx,
             cursor,
+            selection_buffer,
         }
     }
 
@@ -165,6 +169,30 @@ impl ScoreDrawComponent {
 
                     if self.cursor.visible() && self.cursor.visible_at(*pitch, time_point) {
                         self.wb(buffer, pos, col, row, 'C');
+                    }
+                }
+
+                if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
+                    let selected_notes: HashMap<Pitch, Note> = selection_buffer_score
+                        .notes_starting_at_time(time_point)
+                        .into_iter()
+                        .map(|note| (note.pitch, note))
+                        .collect();
+
+                    for (row, pitch) in pitches.iter().enumerate() {
+                        if let Some(note) = selected_notes.get(pitch) {
+                            self.wb_string(
+                                buffer,
+                                pos,
+                                col,
+                                row,
+                                self.note_string(note, time_point, &self.score_viewport.resolution),
+                            );
+                        }
+
+                        if self.cursor.visible() && self.cursor.visible_at(*pitch, time_point) {
+                            self.wb(buffer, pos, col, row, 'C');
+                        }
                     }
                 }
 

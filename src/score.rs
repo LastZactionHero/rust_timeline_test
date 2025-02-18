@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, f32::MAX};
 
-use crate::pitch::Pitch;
+use crate::{pitch::Pitch, selection_buffer};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Note {
@@ -96,5 +96,82 @@ impl Score {
         }
 
         new_score
+    }
+
+    pub fn translate(&self, time_point_start_b32: Option<u64>) -> Score {
+        match time_point_start_b32 {
+            Some(new_start_time) => {
+                let mut new_score = Score {
+                    bpm: self.bpm,
+                    notes: HashMap::new(),
+                };
+
+                let mut min_onset = u64::MAX;
+                for (&onset_b32, _) in &self.notes {
+                    min_onset = min_onset.min(onset_b32);
+                }
+
+                if min_onset == u64::MAX {
+                    // No notes in the original score
+                    return self.clone(); // Return a copy if no notes exist
+                }
+
+                let time_offset = if min_onset > new_start_time {
+                    min_onset - new_start_time
+                } else {
+                    new_start_time - min_onset
+                };
+
+                for (&onset_b32, notes_at_onset) in &self.notes {
+                    let new_onset = if min_onset > new_start_time {
+                        onset_b32 - time_offset
+                    } else {
+                        onset_b32 + time_offset
+                    };
+
+                    for note in notes_at_onset {
+                        new_score.insert_or_remove(note.pitch, new_onset, note.duration_b32);
+                    }
+                }
+
+                new_score
+            }
+            None => self.clone(), // Return a copy if no new start time is provided
+        }
+    }
+
+    pub fn merge_down(&self, other: &Score) -> Score {
+        let mut merged_score = self.clone(); // Start with a copy of the first score
+
+        for (&onset_b32, notes_at_onset) in &other.notes {
+            for note in notes_at_onset {
+                merged_score.insert_or_remove(note.pitch, onset_b32, note.duration_b32);
+            }
+        }
+
+        merged_score
+    }
+
+    pub fn duration(&self) -> u64 {
+        if self.notes.is_empty() {
+            return 0; // Return 0 if the score is empty
+        }
+
+        let mut first_onset = u64::MAX;
+        let mut last_final_time = 0;
+
+        for (&onset_b32, notes_at_onset) in &self.notes {
+            first_onset = first_onset.min(onset_b32);
+            for note in notes_at_onset {
+                last_final_time = last_final_time.max(note.onset_b32 + note.duration_b32);
+            }
+        }
+
+        if first_onset == u64::MAX {
+            // No notes found
+            return 0;
+        }
+
+        last_final_time - first_onset
     }
 }

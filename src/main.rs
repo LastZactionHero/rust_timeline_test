@@ -6,7 +6,6 @@ use std::{
 mod app_state;
 mod cursor;
 mod draw_components;
-mod draw_score;
 mod events;
 mod mode;
 mod pitch;
