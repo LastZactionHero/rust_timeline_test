@@ -1,5 +1,6 @@
 // pitch.rs
 
+use std::cmp::Ordering;
 use std::fmt;
 pub static OCTAVE_MAX: u16 = 8;
 
@@ -127,25 +128,6 @@ impl Pitch {
             self.octave,
         ))
     }
-    //
-    //
-    // pub fn from_row_index(row: u16) -> Pitch {
-    //     match row {
-    //         0 => Pitch::C,
-    //         1 => Pitch::Cs,
-    //         2 => Pitch::D,
-    //         3 => Pitch::Ds,
-    //         4 => Pitch::E,
-    //         5 => Pitch::F,
-    //         6 => Pitch::Fs,
-    //         7 => Pitch::G,
-    //         8 => Pitch::Gs,
-    //         9 => Pitch::A,
-    //         10 => Pitch::As,
-    //         11 => Pitch::B,
-    //         _ => panic!("Invalid row index for pitch: {}", row),
-    //     }
-    // }
 
     pub fn frequency(&self, octave: u16) -> f64 {
         // Calculate the number of half steps from A4 (440 Hz)
@@ -163,5 +145,20 @@ impl Pitch {
 impl fmt::Display for Pitch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}", self.tone.as_str(), self.octave)
+    }
+}
+
+impl PartialOrd for Pitch {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.octave < other.octave {
+            return Some(Ordering::Less);
+        } else if self.octave > other.octave {
+            return Some(Ordering::Greater);
+        } else if self.tone.index() < other.tone.index() {
+            return Some(Ordering::Less);
+        } else if self.tone.index() > other.tone.index() {
+            return Some(Ordering::Greater);
+        }
+        Some(Ordering::Equal)
     }
 }

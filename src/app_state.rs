@@ -6,14 +6,16 @@ use crossterm::{
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
 };
-use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::{
+    collections::HashMap,
+    sync::{mpsc, Arc, Mutex},
+};
 use std::{
     io::{self, Write},
     time::Duration,
 };
 
-use crate::events::{capture_input, InputEvent};
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
@@ -30,6 +32,10 @@ use crate::{
         VSplitDrawComponent, Window,
     },
 };
+use crate::{
+    events::{capture_input, InputEvent},
+    selection_buffer::SelectionBuffer,
+};
 
 pub struct AppState {
     score: Arc<Mutex<Score>>,
@@ -42,6 +48,7 @@ pub struct AppState {
     buffer: Option<Vec<Vec<char>>>,
     mode: Arc<Mutex<Mode>>,
     cursor: Cursor,
+    selection_buffer: SelectionBuffer,
 }
 
 impl AppState {
@@ -62,6 +69,7 @@ impl AppState {
             buffer: None,
             mode: Arc::new(Mutex::new(Mode::Normal)),
             cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
+            selection_buffer: SelectionBuffer::None,
         }
     }
 
@@ -167,11 +175,15 @@ impl AppState {
                             self.cursor = self
                                 .cursor
                                 .left(self.score_viewport.resolution.duration_b32());
+                            self.selection_buffer =
+                                self.selection_buffer.translate_to(self.cursor.time_point());
                         }
                         InputEvent::CursorRight => {
                             self.cursor = self
                                 .cursor
                                 .right(self.score_viewport.resolution.duration_b32());
+                            self.selection_buffer =
+                                self.selection_buffer.translate_to(self.cursor.time_point());
                         }
                         InputEvent::InsertNoteAtCursor => {
                             self.score.lock().unwrap().insert_or_remove(
@@ -184,9 +196,15 @@ impl AppState {
                                 .right(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::StartNoteAtCursor => match self.cursor.mode() {
-                            CursorMode::Move => {
-                                self.cursor = self.cursor.start_insert();
-                            }
+                            CursorMode::Move => match *self.mode.lock().unwrap() {
+                                Mode::Select => {
+                                    self.cursor = self.cursor.start_select();
+                                }
+                                Mode::Insert => {
+                                    self.cursor = self.cursor.start_insert();
+                                }
+                                Mode::Normal => {}
+                            },
                             CursorMode::Insert(onset_b32) => {
                                 if onset_b32 < self.cursor.time_point() {
                                     self.score.lock().unwrap().insert_or_remove(
@@ -200,8 +218,46 @@ impl AppState {
                                     .cursor
                                     .right(self.score_viewport.resolution.duration_b32());
                             }
+                            CursorMode::Select(pitch, onset_b32) => {
+                                self.cursor = self.cursor.end_select();
+                            }
+                            CursorMode::Yank => {}
                         },
-                        InputEvent::Cancel => self.cursor = self.cursor.cancel(),
+                        InputEvent::Cancel => {
+                            self.cursor = self.cursor.cancel();
+                            self.selection_buffer = SelectionBuffer::None;
+                        }
+                        InputEvent::Yank => {
+                            let selection_range = self.cursor.selection_range().unwrap();
+                            self.selection_buffer = SelectionBuffer::Score(
+                                self.score.lock().unwrap().clone_at_selection(
+                                    selection_range.time_point_start_b32,
+                                    selection_range.time_point_end_b32,
+                                    selection_range.pitch_low,
+                                    selection_range.pitch_high,
+                                ),
+                            );
+                            self.cursor = self
+                                .cursor
+                                .yank()
+                                .right(self.score_viewport.resolution.duration_b32());
+                        }
+                        InputEvent::Cut => {}
+                        InputEvent::Paste => {
+                            if let SelectionBuffer::Score(ref selection_buffer_score) =
+                                self.selection_buffer
+                            {
+                                let mut score_guard = self.score.lock().unwrap();
+                                *score_guard = score_guard.merge_down(selection_buffer_score);
+
+                                let duration = selection_buffer_score.duration();
+                                self.cursor = self.cursor.right(duration);
+                                self.selection_buffer = SelectionBuffer::Score(
+                                    selection_buffer_score
+                                        .translate(Some(self.cursor.time_point())),
+                                );
+                            }
+                        }
                     }
                     self.draw()?;
                 }
@@ -232,6 +288,7 @@ impl AppState {
                     self.score_viewport,
                     self.input_tx.clone(),
                     self.cursor,
+                    self.selection_buffer.clone(),
                 )),
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,

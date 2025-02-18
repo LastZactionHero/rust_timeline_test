@@ -1,4 +1,4 @@
-use crate::score::{Note, Score};
+use crate::score::{ActiveNote, Note, Score};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::sync::{Arc, Mutex};

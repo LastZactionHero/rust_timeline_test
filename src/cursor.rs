@@ -1,8 +1,12 @@
-use std::fmt;
+use core::panic;
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use crossterm::cursor;
 
-use crate::pitch::Pitch;
+use crate::{pitch::Pitch, score::Score};
 
 #[derive(Clone, Copy)]
 pub struct Cursor {
@@ -21,10 +25,19 @@ enum Visibility {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CursorMode {
     Move,
-    Insert(u64), // Start insert onset
-                 // SELECT
-                 // CUT
-                 // YANK
+    Insert(u64),        // Start insert onset
+    Select(Pitch, u64), // Start select onset and pitch
+    Yank,
+    // SELECT
+    // CUT
+    // YANK
+}
+
+pub struct SelectionRange {
+    pub time_point_start_b32: u64,
+    pub time_point_end_b32: u64,
+    pub pitch_low: Pitch,
+    pub pitch_high: Pitch,
 }
 
 impl Cursor {
@@ -104,13 +117,26 @@ impl Cursor {
     }
 
     pub fn visible_at(self, pitch: Pitch, time_point: u64) -> bool {
-        if !self.visible() || self.pitch != pitch {
+        if !self.visible() {
             return false;
         }
         match self.mode {
-            CursorMode::Move => time_point == self.time_point,
+            CursorMode::Move | CursorMode::Yank => {
+                time_point == self.time_point && self.pitch == pitch
+            }
             CursorMode::Insert(onset_b32) => {
-                time_point >= onset_b32 && time_point <= self.time_point
+                time_point >= onset_b32 && time_point <= self.time_point && self.pitch == pitch
+            }
+            CursorMode::Select(start_pitch, onset_b32) => {
+                let (low_pitch, high_pitch) = if self.pitch > start_pitch {
+                    (start_pitch, self.pitch)
+                } else {
+                    (self.pitch, start_pitch)
+                };
+                time_point >= onset_b32
+                    && time_point <= self.time_point
+                    && pitch >= low_pitch
+                    && pitch <= high_pitch
             }
         }
     }
@@ -139,10 +165,50 @@ impl Cursor {
         cursor
     }
 
+    pub fn start_select(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Select(self.pitch, self.time_point);
+        cursor
+    }
+
+    pub fn end_select(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Move;
+        cursor
+    }
+
     pub fn cancel(self) -> Cursor {
         let mut cursor = self;
         cursor.mode = CursorMode::Move;
         cursor
+    }
+
+    pub fn yank(self) -> Cursor {
+        let mut cursor = self;
+        cursor.mode = CursorMode::Yank;
+        cursor
+    }
+
+    pub fn selection_range(self) -> Option<SelectionRange> {
+        if let CursorMode::Select(pitch, time_point_b32) = self.mode {
+            let (time_point_start_b32, time_point_end_b32) = if time_point_b32 < self.time_point {
+                (time_point_b32, self.time_point)
+            } else {
+                (self.time_point, time_point_b32)
+            };
+            let (pitch_low, pitch_high) = if pitch < self.pitch {
+                (pitch, self.pitch)
+            } else {
+                (self.pitch, pitch)
+            };
+            return Some(SelectionRange {
+                time_point_start_b32,
+                time_point_end_b32,
+                pitch_low,
+                pitch_high,
+            });
+        }
+        None
     }
 }
 
