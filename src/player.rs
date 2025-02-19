@@ -127,16 +127,6 @@ impl Iterator for Player {
         }
 
         if self.tick % self.ticks_per_b32 == 0 {
-            // let within_song = if self.loop_state.is_looping() {
-            //     if let (Some(start), Some(end)) = (self.loop_state.start_time_b32, self.loop_state.end_time_b32) {
-            //         self.time_b32 >= start && self.time_b32 < end
-            //     } else {
-            //         self.score.lock().unwrap().time_within_song(self.time_b32)
-            //     }
-            // } else {
-            //     self.score.lock().unwrap().time_within_song(self.time_b32)
-            // };
-
             if self.score.lock().unwrap().time_within_song(self.time_b32) {
                 self.update_active_notes();
                 self.handle_time_update();
