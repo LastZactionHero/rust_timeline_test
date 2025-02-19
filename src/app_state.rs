@@ -2,6 +2,7 @@
 use crate::audio::audio_player;
 use crate::cursor::Cursor;
 use crate::draw_components::ViewportDrawResult;
+use crate::loop_state::LoopState;
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
@@ -44,6 +45,7 @@ pub struct AppState {
     cursor: Cursor,
     selection_buffer: SelectionBuffer,
     viewport_draw_result: Option<ViewportDrawResult>,
+    loop_state: LoopState,
 }
 
 impl AppState {
@@ -66,6 +68,7 @@ impl AppState {
             cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
             selection_buffer: SelectionBuffer::None,
             viewport_draw_result: None,
+            loop_state: LoopState::new(),
         }
     }
 
@@ -277,6 +280,14 @@ impl AppState {
                                 self.cursor = self.cursor.end_select();
                             }
                         }
+                        InputEvent::ToggleLoopMode => {
+                            self.loop_state = self.loop_state.toggle_mode();
+                        }
+                        InputEvent::SetLoopTimes => {
+                            self.loop_state = self
+                                .loop_state
+                                .mark(self.score_viewport.playback_time_point);
+                        }
                     }
                     self.draw()?;
                 }
@@ -316,6 +327,7 @@ impl AppState {
                         Arc::clone(&self.mode),
                         self.cursor,
                         self.score_viewport,
+                        self.loop_state,
                     )),
                 )),
             ),

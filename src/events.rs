@@ -26,6 +26,8 @@ pub enum InputEvent {
     Cut,
     Paste,
     Delete,
+    ToggleLoopMode,
+    SetLoopTimes,
 }
 
 pub fn capture_input(
@@ -46,13 +48,17 @@ pub fn capture_input(
                         break;
                     }
                     KeyCode::Char('q') => {
-                        if mode == Mode::Select {
-                            tx.send(InputEvent::Yank).unwrap();
+                        match mode {
+                            Mode::Normal => tx.send(InputEvent::ToggleLoopMode).unwrap(),
+                            Mode::Select => tx.send(InputEvent::Yank).unwrap(),
+                            _ => (),
                         }
                     }
                     KeyCode::Char('w') => {
-                        if mode == Mode::Select {
-                            tx.send(InputEvent::Cut).unwrap();
+                        match mode {
+                            Mode::Normal => tx.send(InputEvent::SetLoopTimes).unwrap(),
+                            Mode::Select => tx.send(InputEvent::Cut).unwrap(),
+                            _ => (),
                         }
                     }
                     KeyCode::Char('e') => {
