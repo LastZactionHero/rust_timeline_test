@@ -68,6 +68,14 @@ impl Player {
         self.time_b32
     }
 
+    pub fn set_time_b32(&mut self, time_b32: u64) {
+        self.pause();
+        self.time_b32 = time_b32;
+        self.tick = 0;
+        self.active_notes.clear();
+        self.update_active_notes();
+    }
+
     fn update_active_notes(&mut self) {
         // Get notes starting at current time
         let new_notes = self

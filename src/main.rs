@@ -17,8 +17,10 @@ mod player;
 mod resolution;
 mod score;
 mod selection_buffer;
+mod score_viewport;
 mod sin_wave;
 mod song;
+mod selection_range;
 
 use app_state::AppState;
 use song::create_song;

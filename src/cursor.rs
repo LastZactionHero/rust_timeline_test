@@ -7,6 +7,7 @@ use std::{
 use crossterm::cursor;
 
 use crate::{pitch::Pitch, score::Score};
+use crate::selection_range::SelectionRange;
 
 #[derive(Clone, Copy)]
 pub struct Cursor {
@@ -31,13 +32,6 @@ pub enum CursorMode {
     // SELECT
     // CUT
     // YANK
-}
-
-pub struct SelectionRange {
-    pub time_point_start_b32: u64,
-    pub time_point_end_b32: u64,
-    pub pitch_low: Pitch,
-    pub pitch_high: Pitch,
 }
 
 impl Cursor {

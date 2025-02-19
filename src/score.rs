@@ -7,6 +7,7 @@ use crate::{
     pitch::{Pitch, Tone},
     selection_buffer,
 };
+use crate::selection_range::SelectionRange;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Note {
@@ -98,13 +99,7 @@ impl Score {
     }
 
     // Creates a new Score with just notes between selection times and pitches.
-    pub fn clone_at_selection(
-        &self,
-        time_point_start_b32: u64, // Inclusive
-        time_point_end_b32: u64,   // Exclusive
-        pitch_low: Pitch,
-        pitch_high: Pitch,
-    ) -> Score {
+    pub fn clone_at_selection(&self, selection_range: SelectionRange) -> Score {
         let mut new_score = Score {
             bpm: self.bpm,
             notes: HashMap::new(),
@@ -112,9 +107,9 @@ impl Score {
         };
 
         for (&onset_b32, notes_at_onset) in &self.notes {
-            if onset_b32 >= time_point_start_b32 && onset_b32 < time_point_end_b32 {
+            if onset_b32 >= selection_range.time_point_start_b32 && onset_b32 < selection_range.time_point_end_b32 {
                 for note in notes_at_onset {
-                    if note.pitch >= pitch_low && note.pitch <= pitch_high {
+                    if note.pitch >= selection_range.pitch_low && note.pitch <= selection_range.pitch_high {
                         // Assuming Pitch implements PartialOrd
                         new_score.insert_or_remove(note.pitch, note.onset_b32, note.duration_b32);
                     }
@@ -315,26 +310,21 @@ impl Score {
         result
     }
 
-    pub fn delete_in_selection(
-        &mut self,
-        time_point_start_b32: u64,
-        time_point_end_b32: u64,
-        pitch_low: Pitch,
-        pitch_high: Pitch,
-    ) {
+    pub fn delete_in_selection(&mut self, selection_range: SelectionRange) {
         debug!("Deleting notes between {} and {} with pitch range {:?} to {:?}", 
-            time_point_start_b32, time_point_end_b32, pitch_low, pitch_high);
+            selection_range.time_point_start_b32, selection_range.time_point_end_b32, 
+            selection_range.pitch_low, selection_range.pitch_high);
 
         let mut onsets_to_remove: Vec<u64> = Vec::new();
         let mut notes_to_keep: HashMap<u64, Vec<Note>> = HashMap::new();
 
         // Identify notes to remove and keep
         for (&onset_b32, notes_at_onset) in &self.notes {
-            if onset_b32 >= time_point_start_b32 && onset_b32 < time_point_end_b32 {
+            if onset_b32 >= selection_range.time_point_start_b32 && onset_b32 < selection_range.time_point_end_b32 {
                 let (keep, remove): (Vec<Note>, Vec<Note>) = notes_at_onset
                     .iter()
                     .cloned()
-                    .partition(|note| note.pitch < pitch_low || note.pitch > pitch_high);
+                    .partition(|note| note.pitch < selection_range.pitch_low || note.pitch > selection_range.pitch_high);
 
                 debug!("At onset {}: keeping {} notes, removing {} notes", 
                     onset_b32, keep.len(), remove.len());

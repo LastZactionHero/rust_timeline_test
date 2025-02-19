@@ -1,27 +1,17 @@
 // app_state.rs
-use crossterm::{
-    cursor::{self},
-    style::{self},
-    terminal::{self, ClearType},
-    ExecutableCommand, QueueableCommand,
-};
-use std::sync::{Arc, Mutex};
-use std::io::{self, Write};
-use std::thread::{self, JoinHandle};
-use std::sync::mpsc;
 use crate::audio::audio_player;
 use crate::cursor::Cursor;
+use crate::draw_components::ViewportDrawResult;
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
 use crate::resolution::Resolution;
 use crate::score::Score;
+use crate::score_viewport::ScoreViewport;
 use crate::{
     cursor::CursorMode,
     draw_components::{
-        self,
-        score_draw_component::{ScoreDrawComponent, ScoreViewport},
-        status_bar_component::StatusBarComponent,
+        self, score_draw_component::ScoreDrawComponent, status_bar_component::StatusBarComponent,
         BoxDrawComponent, DrawComponent, DrawResult, NullComponent, Position, VSplitDrawComponent,
         Window,
     },
@@ -30,6 +20,16 @@ use crate::{
     events::{capture_input, InputEvent},
     selection_buffer::SelectionBuffer,
 };
+use crossterm::{
+    cursor::{self},
+    style::{self},
+    terminal::{self, ClearType},
+    ExecutableCommand, QueueableCommand,
+};
+use std::io::{self, Write};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 
 pub struct AppState {
     score: Arc<Mutex<Score>>,
@@ -43,6 +43,7 @@ pub struct AppState {
     mode: Arc<Mutex<Mode>>,
     cursor: Cursor,
     selection_buffer: SelectionBuffer,
+    viewport_draw_result: Option<ViewportDrawResult>,
 }
 
 impl AppState {
@@ -64,6 +65,7 @@ impl AppState {
             mode: Arc::new(Mutex::new(Mode::Normal)),
             cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
             selection_buffer: SelectionBuffer::None,
+            viewport_draw_result: None,
         }
     }
 
@@ -101,33 +103,45 @@ impl AppState {
                     match msg {
                         InputEvent::Quit => break,
                         InputEvent::ViewerOctaveIncrease => {
-                            if let Some(next_pitch) = self.score_viewport.middle_pitch.next() {
-                                self.score_viewport.middle_pitch = next_pitch;
-                            }
+                            self.score_viewport = self.score_viewport.next_octave();
                         }
                         InputEvent::ViewerOctaveDecrease => {
-                            if let Some(prev_pitch) = self.score_viewport.middle_pitch.prev() {
-                                self.score_viewport.middle_pitch = prev_pitch;
-                            }
+                            self.score_viewport = self.score_viewport.prev_octave();
                         }
                         InputEvent::ViewerBarNext => {
-                            self.score_viewport.time_point += 32;
+                            let current_time = self.player.lock().unwrap().current_time_b32();
+                            let next_time = current_time + 32 - current_time % 32;
+                            self.player.lock().unwrap().set_time_b32(next_time);
+
+                            self.score_viewport = self.score_viewport.set_playback_time(next_time);
+                            self.score_viewport = self
+                                .score_viewport
+                                .next_bar(&self.viewport_draw_result.unwrap());
                         }
                         InputEvent::ViewerBarPrevious => {
-                            if self.score_viewport.time_point > 0 {
-                                self.score_viewport.time_point -= 32;
-                            }
+                            let current_time = self.player.lock().unwrap().current_time_b32();
+                            let prev_time = if current_time < 32 {
+                                0
+                            } else if current_time % 32 == 0 {
+                                current_time - 32
+                            } else {
+                                current_time - (current_time % 32)
+                            };
+                            self.player.lock().unwrap().set_time_b32(prev_time);
+
+                            self.score_viewport = self.score_viewport.set_playback_time(prev_time);
+                            self.score_viewport = self
+                                .score_viewport
+                                .prev_bar(&self.viewport_draw_result.unwrap());
                         }
                         InputEvent::ViewerResolutionIncrease => {
-                            self.score_viewport.resolution =
-                                self.score_viewport.resolution.next_up();
+                            self.score_viewport = self.score_viewport.increase_resolution();
                             self.cursor = self
                                 .cursor
                                 .resolution_align(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::ViewerResolutionDecrease => {
-                            self.score_viewport.resolution =
-                                self.score_viewport.resolution.next_down();
+                            self.score_viewport = self.score_viewport.decrease_resolution();
                             self.cursor = self
                                 .cursor
                                 .resolution_align(self.score_viewport.resolution.duration_b32());
@@ -137,7 +151,9 @@ impl AppState {
                             player_guard.toggle_playback();
                         }
                         InputEvent::PlayerBeatChange(playback_time_point_b32) => {
-                            self.score_viewport.playback_time_point = playback_time_point_b32;
+                            self.score_viewport = self
+                                .score_viewport
+                                .set_playback_time(playback_time_point_b32);
                         }
                         InputEvent::ToggleMode => {
                             let next_mode = match *self.mode.lock().unwrap() {
@@ -223,12 +239,11 @@ impl AppState {
                         }
                         InputEvent::Yank => {
                             let selection_range = self.cursor.selection_range().unwrap();
-                            let selection_score = self.score.lock().unwrap().clone_at_selection(
-                                selection_range.time_point_start_b32,
-                                selection_range.time_point_end_b32,
-                                selection_range.pitch_low,
-                                selection_range.pitch_high,
-                            );
+                            let selection_score = self
+                                .score
+                                .lock()
+                                .unwrap()
+                                .clone_at_selection(selection_range);
                             self.cursor = self
                                 .cursor
                                 .yank()
@@ -255,12 +270,10 @@ impl AppState {
                         }
                         InputEvent::Delete => {
                             if let Some(selection_range) = self.cursor.selection_range() {
-                                self.score.lock().unwrap().delete_in_selection(
-                                    selection_range.time_point_start_b32,
-                                    selection_range.time_point_end_b32,
-                                    selection_range.pitch_low,
-                                    selection_range.pitch_high,
-                                );
+                                self.score
+                                    .lock()
+                                    .unwrap()
+                                    .delete_in_selection(selection_range);
                                 self.cursor = self.cursor.end_select();
                             }
                         }
@@ -318,6 +331,7 @@ impl AppState {
         for draw_result in draw_results {
             match draw_result {
                 DrawResult::ViewportDrawResult(viewport_draw_result) => {
+                    self.viewport_draw_result = Some(viewport_draw_result);
                     match *self.mode.lock().unwrap() {
                         Mode::Normal => {
                             let player = self.player.lock().unwrap();
@@ -328,8 +342,9 @@ impl AppState {
                                     || player.current_time_b32()
                                         >= viewport_draw_result.time_point_end)
                             {
-                                self.score_viewport.time_point =
-                                    player.current_time_b32() - player.current_time_b32() % 32
+                                let new_time =
+                                    player.current_time_b32() - player.current_time_b32() % 32;
+                                self.score_viewport = self.score_viewport.set_time_point(new_time);
                             }
                         }
                         Mode::Insert | Mode::Select => {
@@ -337,9 +352,9 @@ impl AppState {
                                 || self.cursor.time_point()
                                     >= viewport_draw_result.time_point_end - 2
                             {
-                                // TODO: Rework this
-                                self.score_viewport.time_point =
+                                let new_time =
                                     self.cursor.time_point() - self.cursor.time_point() % 32;
+                                self.score_viewport = self.score_viewport.set_time_point(new_time);
                             }
                         }
                     }

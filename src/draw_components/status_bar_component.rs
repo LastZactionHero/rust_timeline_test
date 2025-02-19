@@ -1,11 +1,10 @@
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use super::score_draw_component::ScoreViewport;
 use super::{DrawComponent, DrawResult};
 use crate::cursor::Cursor;
 use crate::draw_components::Position;
 use crate::mode::Mode;
+use crate::score_viewport::ScoreViewport;
 
 pub struct StatusBarComponent {
     mode: Arc<Mutex<Mode>>,

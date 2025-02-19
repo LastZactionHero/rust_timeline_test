@@ -14,13 +14,13 @@
   - X Insert Single
   - X Insert Duration
   - X Delete
-  - Select
-  - Yank
+  - X Select
+  - X Yank
   - Copy
   - Slide
   - Piano key note insert and play
   - Play note when moving cursor, or a note hold/play button
-- Move playhead
+- X Move playhead
 - Looping
 - Save file
 - Load file

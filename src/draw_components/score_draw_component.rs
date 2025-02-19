@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::{mpsc, Arc, Mutex};
 
 use super::{DrawComponent, DrawResult, ViewportDrawResult};
@@ -7,9 +6,9 @@ use crate::cursor::Cursor;
 use crate::draw_components::Position;
 use crate::events::InputEvent;
 use crate::pitch::Pitch;
-use crate::player::{PlayState, Player};
-use crate::resolution::Resolution;
-use crate::score::{Note, Score, NoteState, ActiveNote};
+use crate::player::PlayState;
+use crate::score::{ActiveNote, NoteState, Score};
+use crate::score_viewport::ScoreViewport;
 use crate::selection_buffer::SelectionBuffer;
 use log::debug;
 
@@ -22,45 +21,13 @@ pub struct ScoreDrawComponent {
     selection_buffer: SelectionBuffer,
 }
 
-#[derive(Clone, Copy)]
-pub struct ScoreViewport {
-    pub middle_pitch: Pitch,
-    pub resolution: Resolution,
-    pub time_point: u64,
-    pub playback_time_point: u64,
-}
-
-impl ScoreViewport {
-    pub fn new(
-        middle_pitch: Pitch,
-        resolution: Resolution,
-        time_point: u64,
-        playback_time_point: u64,
-    ) -> ScoreViewport {
-        ScoreViewport {
-            middle_pitch,
-            resolution,
-            time_point,
-            playback_time_point,
-        }
-    }
-}
-
-impl fmt::Display for ScoreViewport {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} {} {}",
-            self.middle_pitch, self.time_point, self.playback_time_point
-        )
-    }
-}
-
 impl DrawComponent for ScoreDrawComponent {
     fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> Vec<DrawResult> {
-        debug!("Drawing score at position: x={}, y={}, w={}, h={}", 
-            pos.x, pos.y, pos.w, pos.h);
-            
+        debug!(
+            "Drawing score at position: x={}, y={}, w={}, h={}",
+            pos.x, pos.y, pos.w, pos.h
+        );
+
         self.draw_pitches(buffer, pos);
         let viewport_draw_result = self.draw_score(
             buffer,
@@ -118,7 +85,6 @@ impl ScoreDrawComponent {
         let pitches = self.visible_pitches(pos);
         let mut time_point = self.score_viewport.time_point;
         debug!("Drawing score with {} visible pitches", pitches.len());
-        
 
         // Draw the empty score.
         for col in 0..pos.w - 1 {
@@ -157,15 +123,21 @@ impl ScoreDrawComponent {
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             let mut col_states: HashMap<(usize, Pitch), NoteState> = HashMap::new();
-            
+
             for _ in 0..self.score_viewport.resolution.duration_b32() {
                 let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point);
-                
+
                 for (row, pitch) in pitches.iter().enumerate() {
-                    if let Some(active_note) = active_notes.iter().find(|note| note.note.pitch == *pitch) {
-                        let current_state = col_states.entry((row, *pitch)).or_insert(NoteState::Sustain);
+                    if let Some(active_note) =
+                        active_notes.iter().find(|note| note.note.pitch == *pitch)
+                    {
+                        let current_state = col_states
+                            .entry((row, *pitch))
+                            .or_insert(NoteState::Sustain);
                         match active_note.state {
-                            NoteState::Onset | NoteState::Release => *current_state = active_note.state,
+                            NoteState::Onset | NoteState::Release => {
+                                *current_state = active_note.state
+                            }
                             NoteState::Sustain => {
                                 if *current_state == NoteState::Sustain {
                                     *current_state = NoteState::Sustain
@@ -184,7 +156,9 @@ impl ScoreDrawComponent {
 
                     for (row, pitch) in pitches.iter().enumerate() {
                         if let Some(active_note) = selected_notes_map.get(pitch) {
-                            let current_state = col_states.entry((row, *pitch)).or_insert(NoteState::Sustain);
+                            let current_state = col_states
+                                .entry((row, *pitch))
+                                .or_insert(NoteState::Sustain);
                             *current_state = active_note.state;
                             match active_note.state {
                                 NoteState::Onset => *current_state = NoteState::Onset,
