@@ -6,6 +6,7 @@ use std::{
 use log::*;
 use simplelog::*;
 use std::fs::File;
+mod audio;
 mod app_state;
 mod cursor;
 mod draw_components;

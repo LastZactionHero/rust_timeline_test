@@ -1,35 +1,29 @@
 // app_state.rs
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossterm::{
     cursor::{self},
     style::{self},
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
 };
+use std::sync::{Arc, Mutex};
+use std::io::{self, Write};
 use std::thread::{self, JoinHandle};
-use std::{
-    collections::HashMap,
-    sync::{mpsc, Arc, Mutex},
-};
-use std::{
-    io::{self, Write},
-    time::Duration,
-};
-
+use std::sync::mpsc;
+use crate::audio::audio_player;
+use crate::cursor::Cursor;
 use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
 use crate::resolution::Resolution;
 use crate::score::Score;
-use crate::{cursor::Cursor, draw_components::ViewportDrawResult};
 use crate::{
     cursor::CursorMode,
     draw_components::{
         self,
         score_draw_component::{ScoreDrawComponent, ScoreViewport},
         status_bar_component::StatusBarComponent,
-        BoxDrawComponent, DrawComponent, DrawResult, FillComponent, NullComponent, Position,
-        VSplitDrawComponent, Window,
+        BoxDrawComponent, DrawComponent, DrawResult, NullComponent, Position, VSplitDrawComponent,
+        Window,
     },
 };
 use crate::{
@@ -89,7 +83,7 @@ impl AppState {
         let player_tx = self.input_tx.clone();
         let player = Arc::clone(&self.player);
         self.audio_thread = Some(thread::spawn(move || {
-            let _ = Self::audio_player(&player, player_tx.clone());
+            let _ = audio_player(&player, player_tx.clone());
         }));
 
         // Main loop
@@ -240,7 +234,7 @@ impl AppState {
                                 .yank()
                                 .right(self.score_viewport.resolution.duration_b32());
                             self.selection_buffer = SelectionBuffer::Score(
-                                selection_score.translate(Some(self.cursor.time_point()))
+                                selection_score.translate(Some(self.cursor.time_point())),
                             );
                         }
                         InputEvent::Cut => {}
@@ -369,56 +363,5 @@ impl AppState {
 
         self.buffer = Some(buffer);
         Ok(())
-    }
-
-    fn audio_player(
-        player: &Arc<Mutex<Player>>,
-        tx: mpsc::Sender<InputEvent>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .expect("Did not find default output device");
-        let config = device.default_output_config().unwrap();
-
-        let err_fn = |err| eprintln!("an error occurred on stream: {err}");
-        let stream_config: cpal::StreamConfig = config.into();
-        let channels = stream_config.channels as usize;
-
-        let player_clone = player.clone();
-        let stream = device.build_output_stream(
-            &stream_config,
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                Self::write_data(data, channels, &player_clone.clone(), &tx.clone());
-            },
-            err_fn,
-            None,
-        )?;
-        stream.play()?;
-
-        loop {
-            thread::sleep(Duration::from_millis(1000));
-        }
-    }
-
-    fn write_data(
-        output: &mut [f32],
-        channels: usize,
-        player: &Arc<Mutex<Player>>,
-        tx: &mpsc::Sender<InputEvent>,
-    ) {
-        let mut time_b32 = player.lock().unwrap().current_time_b32();
-        for frame in output.chunks_mut(channels) {
-            #[allow(clippy::cast_possible_truncation)]
-            let sample = player.lock().unwrap().next().unwrap() as f32;
-            let next_time_b32 = player.lock().unwrap().current_time_b32();
-            if next_time_b32 != time_b32 {
-                time_b32 = next_time_b32;
-                tx.send(InputEvent::PlayerBeatChange(time_b32)).unwrap();
-            }
-            for s in frame.iter_mut() {
-                *s = sample;
-            }
-        }
     }
 }
