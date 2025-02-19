@@ -18,17 +18,15 @@
   - X Yank
   - Copy
   - Slide
-  - Piano key note insert and play
   - Play note when moving cursor, or a note hold/play button
 - X Move playhead
-- Looping
+- X Looping
 - Save file
 - Load file
 - Promo
 - Multi-instrument
 - Keyboard maps
 - Score editing
-- Looping
 
 ### MS 3: March
 
