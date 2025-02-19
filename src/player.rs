@@ -3,12 +3,15 @@ use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::sync::{Arc, Mutex};
 use crate::loop_state::LoopState;
+use std::time::Instant;
+use crate::pitch::Pitch;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PlayState {
     Stopped,
     Playing,
     Paused,
+    Preview,
 }
 
 pub struct Player {
@@ -20,6 +23,7 @@ pub struct Player {
     active_notes: Vec<Note>,
     ticks_per_b32: u64,
     loop_state: LoopState,
+    preview_start: Option<Instant>,
 }
 
 impl Player {
@@ -38,6 +42,7 @@ impl Player {
             active_notes: Vec::new(),
             ticks_per_b32,
             loop_state: LoopState::new(),
+            preview_start: None,
         }
     }
 
@@ -60,11 +65,12 @@ impl Player {
         self.state = match self.state {
             PlayState::Playing => PlayState::Paused,
             PlayState::Paused | PlayState::Stopped => PlayState::Playing,
+            PlayState::Preview => PlayState::Paused,
         }
     }
 
     pub fn is_playing(&self) -> bool {
-        self.state == PlayState::Playing
+        self.state == PlayState::Playing || self.state == PlayState::Preview
     }
 
     pub fn current_time_b32(&self) -> u64 {
@@ -116,26 +122,58 @@ impl Player {
             }
         }
     }
+
+    pub fn preview_note(&mut self, pitch: Pitch) {
+        self.state = PlayState::Preview;
+        self.active_notes.clear();
+        self.active_notes.push(Note {
+            pitch,
+            onset_b32: 0,
+            duration_b32: 16,
+        });
+        self.preview_start = Some(Instant::now());
+    }
+
+    pub fn clear_preview(&mut self) {
+        if self.state == PlayState::Preview {
+            self.state = PlayState::Stopped;
+            self.active_notes.clear();
+            self.preview_start = None;
+        }
+    }
 }
 
 impl Iterator for Player {
     type Item = f64;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.state != PlayState::Playing {
-            return Some(0.0);
-        }
-
-        if self.tick % self.ticks_per_b32 == 0 {
-            if self.score.lock().unwrap().time_within_song(self.time_b32) {
-                self.update_active_notes();
-                self.handle_time_update();
-            } else {
-                self.active_notes.clear();
-                self.stop();
+        // Check if preview should end
+        if let Some(start_time) = self.preview_start {
+            const PREVIEW_DURATION_MS: u128 = 250;
+            if start_time.elapsed().as_millis() > PREVIEW_DURATION_MS {
+                self.clear_preview();
             }
         }
-        self.tick += 1;
+
+        match self.state {
+            PlayState::Playing => {
+                if self.tick % self.ticks_per_b32 == 0 {
+                    if self.score.lock().unwrap().time_within_song(self.time_b32) {
+                        self.update_active_notes();
+                        self.handle_time_update();
+                    } else {
+                        self.active_notes.clear();
+                        self.stop();
+                    }
+                }
+                self.tick += 1;
+            }
+            PlayState::Preview => {
+                // Just continue playing the preview note
+                self.tick += 1;
+            }
+            _ => return Some(0.0),
+        }
 
         if self.active_notes.is_empty() {
             return Some(0.0);

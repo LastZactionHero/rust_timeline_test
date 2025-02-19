@@ -176,12 +176,18 @@ impl AppState {
                                 Some(next_pitch) => self.score_viewport.middle_pitch = next_pitch,
                                 None => (),
                             }
+                            if *self.mode.lock().unwrap() == Mode::Insert {
+                                self.player.lock().unwrap().preview_note(self.cursor.pitch());
+                            }
                         }
                         InputEvent::CursorDown => {
                             self.cursor = self.cursor.down();
                             match self.score_viewport.middle_pitch.prev() {
                                 Some(prev_pitch) => self.score_viewport.middle_pitch = prev_pitch,
                                 None => (),
+                            }
+                            if *self.mode.lock().unwrap() == Mode::Insert {
+                                self.player.lock().unwrap().preview_note(self.cursor.pitch());
                             }
                         }
                         InputEvent::CursorLeft => {

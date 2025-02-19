@@ -18,7 +18,7 @@
   - X Yank
   - Copy
   - Slide
-  - Play note when moving cursor, or a note hold/play button
+  - X Play note when moving cursor, or a note hold/play button
 - X Move playhead
 - X Looping
 - Save file
