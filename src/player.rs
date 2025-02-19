@@ -2,6 +2,7 @@ use crate::score::{ActiveNote, Note, Score};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::sync::{Arc, Mutex};
+use crate::loop_state::LoopState;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PlayState {
@@ -18,6 +19,7 @@ pub struct Player {
     time_b32: u64,
     active_notes: Vec<Note>,
     ticks_per_b32: u64,
+    loop_state: LoopState,
 }
 
 impl Player {
@@ -35,6 +37,7 @@ impl Player {
             time_b32: 0,
             active_notes: Vec::new(),
             ticks_per_b32,
+            loop_state: LoopState::new(),
         }
     }
 
@@ -76,6 +79,10 @@ impl Player {
         self.update_active_notes();
     }
 
+    pub fn set_loop_state(&mut self, loop_state: LoopState) {
+        self.loop_state = loop_state;
+    }
+
     fn update_active_notes(&mut self) {
         // Get notes starting at current time
         let new_notes = self
@@ -93,6 +100,22 @@ impl Player {
     pub fn state(&self) -> PlayState {
         return self.state;
     }
+
+    fn handle_time_update(&mut self) {
+        if self.tick != 0 {
+            self.time_b32 += 1;
+        }
+
+        if self.loop_state.is_looping() {
+            if let (Some(start), Some(end)) = (self.loop_state.start_time_b32, self.loop_state.end_time_b32) {
+                if self.time_b32 >= end || self.time_b32 < start {
+                    self.time_b32 = start;
+                    self.tick = 0;
+                    self.active_notes.clear();
+                }
+            }
+        }
+    }
 }
 
 impl Iterator for Player {
@@ -103,17 +126,23 @@ impl Iterator for Player {
             return Some(0.0);
         }
 
-        // Update notes when we hit a new b32 boundary
         if self.tick % self.ticks_per_b32 == 0 {
+            // let within_song = if self.loop_state.is_looping() {
+            //     if let (Some(start), Some(end)) = (self.loop_state.start_time_b32, self.loop_state.end_time_b32) {
+            //         self.time_b32 >= start && self.time_b32 < end
+            //     } else {
+            //         self.score.lock().unwrap().time_within_song(self.time_b32)
+            //     }
+            // } else {
+            //     self.score.lock().unwrap().time_within_song(self.time_b32)
+            // };
+
             if self.score.lock().unwrap().time_within_song(self.time_b32) {
                 self.update_active_notes();
+                self.handle_time_update();
             } else {
                 self.active_notes.clear();
                 self.stop();
-            }
-
-            if self.tick != 0 {
-                self.time_b32 += 1;
             }
         }
         self.tick += 1;
@@ -122,7 +151,6 @@ impl Iterator for Player {
             return Some(0.0);
         }
 
-        // Generate audio sample from active notes
         let mut total_amplitudes: f64 = 0.0;
         for note in &self.active_notes {
             let frequency = note.pitch.frequency(note.pitch.octave);

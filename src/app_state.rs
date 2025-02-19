@@ -282,11 +282,11 @@ impl AppState {
                         }
                         InputEvent::ToggleLoopMode => {
                             self.loop_state = self.loop_state.toggle_mode();
+                            self.player.lock().unwrap().set_loop_state(self.loop_state);
                         }
                         InputEvent::SetLoopTimes => {
-                            self.loop_state = self
-                                .loop_state
-                                .mark(self.score_viewport.playback_time_point);
+                            self.loop_state = self.loop_state.mark(self.score_viewport.playback_time_point);
+                            self.player.lock().unwrap().set_loop_state(self.loop_state);
                         }
                     }
                     self.draw()?;
@@ -319,6 +319,7 @@ impl AppState {
                     self.input_tx.clone(),
                     self.cursor,
                     self.selection_buffer.clone(),
+                    self.loop_state,
                 )),
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,

@@ -11,6 +11,7 @@ use crate::score::{ActiveNote, NoteState, Score};
 use crate::score_viewport::ScoreViewport;
 use crate::selection_buffer::SelectionBuffer;
 use log::debug;
+use crate::loop_state::{LoopState, LoopMode};
 
 pub struct ScoreDrawComponent {
     score: Arc<Mutex<Score>>,
@@ -19,6 +20,7 @@ pub struct ScoreDrawComponent {
     event_tx: mpsc::Sender<InputEvent>,
     cursor: Cursor,
     selection_buffer: SelectionBuffer,
+    loop_state: LoopState,
 }
 
 impl DrawComponent for ScoreDrawComponent {
@@ -50,6 +52,7 @@ impl ScoreDrawComponent {
         tx: mpsc::Sender<InputEvent>,
         cursor: Cursor,
         selection_buffer: SelectionBuffer,
+        loop_state: LoopState,
     ) -> ScoreDrawComponent {
         ScoreDrawComponent {
             score,
@@ -58,6 +61,7 @@ impl ScoreDrawComponent {
             event_tx: tx,
             cursor,
             selection_buffer,
+            loop_state,
         }
     }
 
@@ -107,13 +111,25 @@ impl ScoreDrawComponent {
             }
         }
 
-        // Draw the playhead.
+        // Draw the playhead and loop markers
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
                 for (row, _pitch) in pitches.iter().enumerate() {
                     if time_point == self.score_viewport.playback_time_point {
                         self.wb(buffer, pos, col, row, '░');
+                    } else if self.loop_state.mode == LoopMode::Looping {
+                        // Show loop start/end markers if loop mode is enabled
+                        if let Some(start_time) = self.loop_state.start_time_b32 {
+                            if time_point == start_time {
+                                self.wb(buffer, pos, col, row, '░');
+                            }
+                        }
+                        if let Some(end_time) = self.loop_state.end_time_b32 {
+                            if time_point == end_time {
+                                self.wb(buffer, pos, col, row, '░');
+                            }
+                        }
                     }
                 }
                 time_point += 1;
