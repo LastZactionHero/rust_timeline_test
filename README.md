@@ -19,6 +19,7 @@
   - Copy
   - Slide
   - Piano key note insert and play
+  - Play note when moving cursor, or a note hold/play button
 - Move playhead
 - Looping
 - Save file
