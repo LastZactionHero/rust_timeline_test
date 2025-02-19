@@ -25,8 +25,8 @@
 - Load file
 - Promo
 - Multi-instrument
-- Keyboard maps
 - Score editing
+- Undo
 
 ### MS 3: March
 
@@ -34,6 +34,7 @@
 - Keyboard Matrix Board
 - Scroll Wheel Board
 - Color
+- Envelope cutoff
 
 ### MS 4: April
 
@@ -41,6 +42,7 @@
 - Samplers
 - Effects
 - Mixdown
+- Keyboard maps
 
 ### MS 5: May
 
