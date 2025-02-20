@@ -3,7 +3,6 @@ use crate::audio::audio_player;
 use crate::cursor::Cursor;
 use crate::draw_components::ViewportDrawResult;
 use crate::loop_state::LoopState;
-use crate::mode::Mode;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
 use crate::resolution::Resolution;
@@ -43,7 +42,6 @@ pub struct AppState {
     input_thread: Option<JoinHandle<()>>,
     audio_thread: Option<JoinHandle<()>>,
     buffer: Option<Vec<Vec<char>>>,
-    mode: Arc<Mutex<Mode>>,
     cursor: Cursor,
     selection_buffer: SelectionBuffer,
     viewport_draw_result: Option<ViewportDrawResult>,
@@ -67,7 +65,6 @@ impl AppState {
             input_thread: None,
             audio_thread: None,
             buffer: None,
-            mode: Arc::new(Mutex::new(Mode::Normal)),
             cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
             selection_buffer: SelectionBuffer::None,
             viewport_draw_result: None,
@@ -310,7 +307,6 @@ impl AppState {
                     draw_components::VSplitStyle::StatusBarNoDivider,
                     Box::new(NullComponent {}),
                     Box::new(StatusBarComponent::new(
-                        Arc::clone(&self.mode),
                         self.cursor,
                         self.score_viewport,
                         self.loop_state,
@@ -330,31 +326,20 @@ impl AppState {
             match draw_result {
                 DrawResult::ViewportDrawResult(viewport_draw_result) => {
                     self.viewport_draw_result = Some(viewport_draw_result);
-                    match *self.mode.lock().unwrap() {
-                        Mode::Normal => {
-                            let player = self.player.lock().unwrap();
-
-                            if player.is_playing()
-                                && (player.current_time_b32()
-                                    < viewport_draw_result.time_point_start
-                                    || player.current_time_b32()
-                                        >= viewport_draw_result.time_point_end)
-                            {
-                                let new_time =
-                                    player.current_time_b32() - player.current_time_b32() % 32;
-                                self.score_viewport = self.score_viewport.set_time_point(new_time);
-                            }
-                        }
-                        Mode::Insert | Mode::Select => {
-                            if self.cursor.time_point() < viewport_draw_result.time_point_start
-                                || self.cursor.time_point()
-                                    >= viewport_draw_result.time_point_end - 2
-                            {
-                                let new_time =
-                                    self.cursor.time_point() - self.cursor.time_point() % 32;
-                                self.score_viewport = self.score_viewport.set_time_point(new_time);
-                            }
-                        }
+                    let player = self.player.lock().unwrap();
+                    if player.is_playing()
+                        && (player.current_time_b32() < viewport_draw_result.time_point_start
+                            || player.current_time_b32() >= viewport_draw_result.time_point_end)
+                    {
+                        let new_time = player.current_time_b32() - player.current_time_b32() % 32;
+                        self.score_viewport = self.score_viewport.set_time_point(new_time);
+                    }
+                    
+                    if self.cursor.time_point() < viewport_draw_result.time_point_start
+                        || self.cursor.time_point() >= viewport_draw_result.time_point_end - 2
+                    {
+                        let new_time = self.cursor.time_point() - self.cursor.time_point() % 32;
+                        self.score_viewport = self.score_viewport.set_time_point(new_time);
                     }
                 }
             }
