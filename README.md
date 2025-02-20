@@ -21,8 +21,8 @@
   - X Play note when moving cursor, or a note hold/play button
 - X Move playhead
 - X Looping
-- Save file
-- Load file
+- X Save file
+- X Load file
 - Promo
 - Multi-instrument
 - Score editing
