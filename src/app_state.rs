@@ -192,19 +192,21 @@ impl AppState {
                             self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::StartLongNote => {
-                            self.cursor = self.cursor.start_insert();
-                        }
-                        InputEvent::EndLongNote => {
-                            if let CursorMode::Insert(onset_b32) = self.cursor.mode() {
-                                if onset_b32 < self.cursor.time_point() {
-                                    self.score.lock().unwrap().insert_or_remove(
-                                        self.cursor.pitch(),
-                                        onset_b32,
-                                        self.cursor.time_point() - onset_b32 + 2,
-                                    );
+                            match self.cursor.mode() {
+                                CursorMode::Insert(onset_b32) => {
+                                    if onset_b32 < self.cursor.time_point() {
+                                        self.score.lock().unwrap().insert_or_remove(
+                                            self.cursor.pitch(),
+                                            onset_b32,
+                                            self.cursor.time_point() - onset_b32 + 2,
+                                        );
+                                    }
+                                    self.cursor = self.cursor.end_insert();
+                                    self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
                                 }
-                                self.cursor = self.cursor.end_insert();
-                                self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
+                                _ => {
+                                    self.cursor = self.cursor.start_insert();
+                                }
                             }
                         }
                         

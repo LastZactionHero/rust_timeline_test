@@ -19,7 +19,6 @@ pub enum InputEvent {
     CursorRight,
     InsertNote,
     StartLongNote,
-    EndLongNote,
     Cancel,
     Yank,
     Cut,
@@ -33,74 +32,79 @@ pub enum InputEvent {
 
 pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
     crossterm::terminal::enable_raw_mode()?;
-    let mut shift_pressed = false;
+    let mut alt_pressed = false;
 
     loop {
         if poll(Duration::from_millis(500))? {
             if let Event::Key(event) = read()? {
                 match event.code {
-                    // Shift key (right side button)
-                    KeyCode::Char('`') => shift_pressed = !shift_pressed,
-                    
+                    // Core navigation and alt key
+                    KeyCode::Char('1') => tx.send(InputEvent::Cancel).unwrap(),
+                    KeyCode::Char('2') => alt_pressed = !alt_pressed,
+
                     // Arrow keys - Cursor movement or Viewport navigation
                     KeyCode::Left => {
-                        tx.send(if shift_pressed {
+                        tx.send(if alt_pressed {
                             InputEvent::ViewerBarPrevious
                         } else {
                             InputEvent::CursorLeft
-                        }).unwrap();
+                        })
+                        .unwrap();
                     }
                     KeyCode::Right => {
-                        tx.send(if shift_pressed {
+                        tx.send(if alt_pressed {
                             InputEvent::ViewerBarNext
                         } else {
                             InputEvent::CursorRight
-                        }).unwrap();
+                        })
+                        .unwrap();
                     }
                     KeyCode::Up => {
-                        tx.send(if shift_pressed {
+                        tx.send(if alt_pressed {
                             InputEvent::ViewerResolutionIncrease
                         } else {
                             InputEvent::CursorUp
-                        }).unwrap();
+                        })
+                        .unwrap();
                     }
                     KeyCode::Down => {
-                        tx.send(if shift_pressed {
+                        tx.send(if alt_pressed {
                             InputEvent::ViewerResolutionDecrease
                         } else {
                             InputEvent::CursorDown
-                        }).unwrap();
+                        })
+                        .unwrap();
                     }
-                    
-                    // Essential controls
-                    KeyCode::Esc => tx.send(InputEvent::Cancel).unwrap(),
-                    
-                    // Left side keys - Main editing
-                    KeyCode::Char('1') => tx.send(InputEvent::InsertNote).unwrap(),
-                    KeyCode::Char('2') => tx.send(InputEvent::StartLongNote).unwrap(),
-                    KeyCode::Char('3') => tx.send(InputEvent::EndLongNote).unwrap(),
-                    KeyCode::Char('4') => tx.send(InputEvent::Delete).unwrap(),
-                    
-                    // Second row - Loop
-                    KeyCode::Char('e') => tx.send(InputEvent::ToggleLoopMode).unwrap(),
-                    KeyCode::Char('r') => tx.send(InputEvent::SetLoopTimes).unwrap(),
-                    
-                    // Third row - Clipboard
+
+                    // Most common operations - top row right side
+                    KeyCode::Char('r') => tx.send(InputEvent::InsertNote).unwrap(),
+                    // TODO: Delete is not working for a single note.
+                    KeyCode::Char('f') => tx.send(InputEvent::Delete).unwrap(),
+
+                    // Selection controls - grouped together
+                    KeyCode::Char('q') => tx.send(InputEvent::SelectIn).unwrap(),
+                    KeyCode::Char('e') => tx.send(InputEvent::StartLongNote).unwrap(),
+
+                    // Clipboard operations - grouped on left side
                     KeyCode::Char('a') => tx.send(InputEvent::Yank).unwrap(),
                     KeyCode::Char('s') => tx.send(InputEvent::Cut).unwrap(),
                     KeyCode::Char('d') => tx.send(InputEvent::Paste).unwrap(),
-                    KeyCode::Char('f') => tx.send(InputEvent::SaveSong).unwrap(),
-                    
-                    // Playback control
-                    KeyCode::Char('\\') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
-                    
-                    // Add these new mappings - using Q and W keys for selection
-                    KeyCode::Char('q') => tx.send(InputEvent::SelectIn).unwrap(),
-                    
+
+                    // Loop controls - grouped together
+                    KeyCode::Char('z') => tx.send(InputEvent::ToggleLoopMode).unwrap(),
+                    KeyCode::Char('x') => tx.send(InputEvent::SetLoopTimes).unwrap(),
+
+                    // Save and quit - bottom row
+                    KeyCode::Char('c') => tx.send(InputEvent::SaveSong).unwrap(),
+
                     KeyCode::Char('p') => {
                         tx.send(InputEvent::Quit).unwrap();
                         break;
                     }
+
+                    // Playback control
+                    KeyCode::Char('\\') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
+
                     _ => (),
                 }
             }
