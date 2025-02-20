@@ -31,6 +31,8 @@ use std::io::{self, Write};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use crate::song_file::SongFile;
+use log::error;
 
 pub struct AppState {
     score: Arc<Mutex<Score>>,
@@ -46,6 +48,7 @@ pub struct AppState {
     selection_buffer: SelectionBuffer,
     viewport_draw_result: Option<ViewportDrawResult>,
     loop_state: LoopState,
+    song_file: SongFile,
 }
 
 impl AppState {
@@ -69,6 +72,7 @@ impl AppState {
             selection_buffer: SelectionBuffer::None,
             viewport_draw_result: None,
             loop_state: LoopState::new(),
+            song_file: SongFile::new(),
         }
     }
 
@@ -293,6 +297,11 @@ impl AppState {
                         InputEvent::SetLoopTimes => {
                             self.loop_state = self.loop_state.mark(self.score_viewport.playback_time_point);
                             self.player.lock().unwrap().set_loop_state(self.loop_state);
+                        }
+                        InputEvent::SaveSong => {
+                            if let Err(e) = self.song_file.save(&self.score.lock().unwrap()) {
+                                error!("Failed to save song: {}", e);
+                            }
                         }
                     }
                     self.draw()?;

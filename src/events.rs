@@ -28,6 +28,7 @@ pub enum InputEvent {
     Delete,
     ToggleLoopMode,
     SetLoopTimes,
+    SaveSong,
 }
 
 pub fn capture_input(
@@ -107,6 +108,7 @@ pub fn capture_input(
                             tx.send(InputEvent::Delete).unwrap();
                         }
                     },
+                    KeyCode::Char('z') => tx.send(InputEvent::SaveSong).unwrap(),
                     _ => (),
                 }
             }

@@ -22,9 +22,11 @@ mod selection_buffer;
 mod selection_range;
 mod sin_wave;
 mod song;
+mod song_file;
 
 use app_state::AppState;
-use song::create_song;
+use crate::score::Score;
+use std::collections::HashMap;
 
 fn main() -> io::Result<()> {
     // Initialize logging
@@ -37,7 +39,12 @@ fn main() -> io::Result<()> {
 
     info!("Application starting...");
 
-    let score = Arc::new(Mutex::new(create_song()));
+    let score = Arc::new(Mutex::new(Score {
+        bpm: 120,
+        notes: HashMap::new(),
+        active_notes: HashMap::new(),
+    }));
+    
     let mut app_state = AppState::new(score);
     app_state.run()?;
 
