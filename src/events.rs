@@ -18,7 +18,6 @@ pub enum InputEvent {
     CursorLeft,
     CursorRight,
     InsertNote,
-    StartLongNote,
     Cancel,
     Yank,
     Cut,
@@ -37,6 +36,8 @@ pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
     loop {
         if poll(Duration::from_millis(500))? {
             if let Event::Key(event) = read()? {
+                // Unmapped:
+                // 3, 4, q, w, x
                 match event.code {
                     // Core navigation and alt key
                     KeyCode::Char('1') => tx.send(InputEvent::Cancel).unwrap(),
@@ -82,8 +83,7 @@ pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
                     KeyCode::Char('f') => tx.send(InputEvent::Delete).unwrap(),
 
                     // Selection controls - grouped together
-                    KeyCode::Char('q') => tx.send(InputEvent::SelectIn).unwrap(),
-                    KeyCode::Char('e') => tx.send(InputEvent::StartLongNote).unwrap(),
+                    KeyCode::Char('e') => tx.send(InputEvent::SelectIn).unwrap(),
 
                     // Clipboard operations - grouped on left side
                     KeyCode::Char('a') => tx.send(InputEvent::Yank).unwrap(),
@@ -91,11 +91,11 @@ pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
                     KeyCode::Char('d') => tx.send(InputEvent::Paste).unwrap(),
 
                     // Loop controls - grouped together
-                    KeyCode::Char('z') => tx.send(InputEvent::ToggleLoopMode).unwrap(),
-                    KeyCode::Char('x') => tx.send(InputEvent::SetLoopTimes).unwrap(),
+                    KeyCode::Char('c') => tx.send(InputEvent::ToggleLoopMode).unwrap(),
+                    KeyCode::Char('v') => tx.send(InputEvent::SetLoopTimes).unwrap(),
 
                     // Save and quit - bottom row
-                    KeyCode::Char('c') => tx.send(InputEvent::SaveSong).unwrap(),
+                    KeyCode::Char('z') => tx.send(InputEvent::SaveSong).unwrap(),
 
                     KeyCode::Char('p') => {
                         tx.send(InputEvent::Quit).unwrap();

@@ -429,8 +429,14 @@ mod tests {
     fn test_clone_at_selection() {
         let score = create_test_score();
 
-        let selected =
-            score.clone_at_selection(0, 64, Pitch::new(Tone::C, 4), Pitch::new(Tone::E, 4));
+        let selection_range = SelectionRange {
+            time_point_start_b32: 0,
+            time_point_end_b32: 64,
+            pitch_low: Pitch::new(Tone::C, 4),
+            pitch_high: Pitch::new(Tone::E, 4),
+        };
+
+        let selected = score.clone_at_selection(selection_range);
 
         assert_eq!(selected.notes_starting_at_time(0).len(), 1);
         assert_eq!(selected.notes_starting_at_time(32).len(), 1);

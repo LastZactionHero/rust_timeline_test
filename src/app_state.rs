@@ -184,32 +184,31 @@ impl AppState {
                         
                         // Note editing
                         InputEvent::InsertNote => {
-                            self.score.lock().unwrap().insert_or_remove(
-                                self.cursor.pitch(),
-                                self.cursor.time_point(),
-                                self.score_viewport.resolution.duration_b32(),
-                            );
-                            self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
-                        }
-                        InputEvent::StartLongNote => {
                             match self.cursor.mode() {
-                                CursorMode::Insert(onset_b32) => {
-                                    if onset_b32 < self.cursor.time_point() {
-                                        self.score.lock().unwrap().insert_or_remove(
-                                            self.cursor.pitch(),
-                                            onset_b32,
-                                            self.cursor.time_point() - onset_b32 + 2,
-                                        );
-                                    }
-                                    self.cursor = self.cursor.end_insert();
-                                    self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
+                                CursorMode::Select(start, end) => {
+                                    // Insert notes for the entire selection
+                                    let selection_range = self.cursor.selection_range().unwrap();
+                                    let pitch = self.cursor.pitch();
+                                    let mut score_guard = self.score.lock().unwrap();
+                                    
+                                    // Calculate duration based on selection time points
+                                    let duration = selection_range.time_point_end_b32 - selection_range.time_point_start_b32;
+                                    score_guard.insert_or_remove(pitch, selection_range.time_point_start_b32, duration);
+                                    
+                                    // Move cursor to end of selection and clear selection mode
+                                    self.cursor = self.cursor.end_select();
                                 }
                                 _ => {
-                                    self.cursor = self.cursor.start_insert();
+                                    // Regular single note insertion
+                                    self.score.lock().unwrap().insert_or_remove(
+                                        self.cursor.pitch(),
+                                        self.cursor.time_point(),
+                                        self.score_viewport.resolution.duration_b32(),
+                                    );
+                                    self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
                                 }
                             }
                         }
-                        
                         // Selection and clipboard
                         InputEvent::Cancel => {
                             self.cursor = self.cursor.cancel();
