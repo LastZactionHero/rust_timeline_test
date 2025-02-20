@@ -14,7 +14,6 @@ mod cursor;
 mod draw_components;
 mod events;
 mod loop_state;
-mod mode;
 mod pitch;
 mod player;
 mod resolution;
