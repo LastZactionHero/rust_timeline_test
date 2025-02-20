@@ -107,7 +107,8 @@ impl Cursor {
     }
 
     pub fn visible(self) -> bool {
-        self.visibility == Visibility::Visible
+        // self.visibility == Visibility::Visible
+        true
     }
 
     pub fn visible_at(self, pitch: Pitch, time_point: u64) -> bool {
@@ -161,8 +162,17 @@ impl Cursor {
 
     pub fn start_select(self) -> Cursor {
         let mut cursor = self;
-        cursor.mode = CursorMode::Select(self.pitch, self.time_point);
-        cursor
+        match cursor.mode {
+            CursorMode::Select(_, _) => {
+                // If already selecting, do nothing
+                cursor
+            }
+            _ => {
+                // Start new selection from current position
+                cursor.mode = CursorMode::Select(self.pitch, self.time_point);
+                cursor
+            }
+        }
     }
 
     pub fn end_select(self) -> Cursor {

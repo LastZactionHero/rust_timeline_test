@@ -83,9 +83,8 @@ impl AppState {
 
         // Start input thread
         let input_tx = self.input_tx.clone();
-        let mode_clone = Arc::clone(&self.mode);
         self.input_thread = Some(thread::spawn(move || {
-            let _ = capture_input(&input_tx, &mode_clone);
+            let _ = capture_input(&input_tx);
         }));
 
         // Start audio thread
@@ -109,6 +108,8 @@ impl AppState {
                 Ok(msg) => {
                     match msg {
                         InputEvent::Quit => break,
+                        
+                        // Viewer navigation
                         InputEvent::ViewerOctaveIncrease => {
                             self.score_viewport = self.score_viewport.next_octave();
                         }
@@ -119,11 +120,8 @@ impl AppState {
                             let current_time = self.player.lock().unwrap().current_time_b32();
                             let next_time = current_time + 32 - current_time % 32;
                             self.player.lock().unwrap().set_time_b32(next_time);
-
                             self.score_viewport = self.score_viewport.set_playback_time(next_time);
-                            self.score_viewport = self
-                                .score_viewport
-                                .next_bar(&self.viewport_draw_result.unwrap());
+                            self.score_viewport = self.score_viewport.next_bar(&self.viewport_draw_result.unwrap());
                         }
                         InputEvent::ViewerBarPrevious => {
                             let current_time = self.player.lock().unwrap().current_time_b32();
@@ -135,54 +133,37 @@ impl AppState {
                                 current_time - (current_time % 32)
                             };
                             self.player.lock().unwrap().set_time_b32(prev_time);
-
                             self.score_viewport = self.score_viewport.set_playback_time(prev_time);
-                            self.score_viewport = self
-                                .score_viewport
-                                .prev_bar(&self.viewport_draw_result.unwrap());
+                            self.score_viewport = self.score_viewport.prev_bar(&self.viewport_draw_result.unwrap());
                         }
+                        
+                        // Resolution controls
                         InputEvent::ViewerResolutionIncrease => {
                             self.score_viewport = self.score_viewport.increase_resolution();
-                            self.cursor = self
-                                .cursor
-                                .resolution_align(self.score_viewport.resolution.duration_b32());
+                            self.cursor = self.cursor.resolution_align(self.score_viewport.resolution.duration_b32());
                         }
                         InputEvent::ViewerResolutionDecrease => {
                             self.score_viewport = self.score_viewport.decrease_resolution();
-                            self.cursor = self
-                                .cursor
-                                .resolution_align(self.score_viewport.resolution.duration_b32());
+                            self.cursor = self.cursor.resolution_align(self.score_viewport.resolution.duration_b32());
                         }
+                        
+                        // Playback controls
                         InputEvent::PlayerTogglePlayback => {
                             let mut player_guard = self.player.lock().unwrap();
                             player_guard.toggle_playback();
                         }
                         InputEvent::PlayerBeatChange(playback_time_point_b32) => {
-                            self.score_viewport = self
-                                .score_viewport
-                                .set_playback_time(playback_time_point_b32);
+                            self.score_viewport = self.score_viewport.set_playback_time(playback_time_point_b32);
                         }
-                        InputEvent::ToggleMode => {
-                            let next_mode = match *self.mode.lock().unwrap() {
-                                Mode::Normal => Mode::Insert,
-                                Mode::Insert => Mode::Select,
-                                Mode::Select => Mode::Normal,
-                            };
-                            *self.mode.lock().unwrap() = next_mode;
-                            self.cursor = match *self.mode.lock().unwrap() {
-                                Mode::Select | Mode::Insert => self.cursor.show(),
-                                Mode::Normal => self.cursor.hide(),
-                            };
-                        }
+                        
+                        // Cursor movement
                         InputEvent::CursorUp => {
                             self.cursor = self.cursor.up();
                             match self.score_viewport.middle_pitch.next() {
                                 Some(next_pitch) => self.score_viewport.middle_pitch = next_pitch,
                                 None => (),
                             }
-                            if *self.mode.lock().unwrap() == Mode::Insert {
-                                self.player.lock().unwrap().preview_note(self.cursor.pitch());
-                            }
+                            self.player.lock().unwrap().preview_note(self.cursor.pitch());
                         }
                         InputEvent::CursorDown => {
                             self.cursor = self.cursor.down();
@@ -190,45 +171,31 @@ impl AppState {
                                 Some(prev_pitch) => self.score_viewport.middle_pitch = prev_pitch,
                                 None => (),
                             }
-                            if *self.mode.lock().unwrap() == Mode::Insert {
-                                self.player.lock().unwrap().preview_note(self.cursor.pitch());
-                            }
+                            self.player.lock().unwrap().preview_note(self.cursor.pitch());
                         }
                         InputEvent::CursorLeft => {
-                            self.cursor = self
-                                .cursor
-                                .left(self.score_viewport.resolution.duration_b32());
-                            self.selection_buffer =
-                                self.selection_buffer.translate_to(self.cursor.time_point());
+                            self.cursor = self.cursor.left(self.score_viewport.resolution.duration_b32());
+                            self.selection_buffer = self.selection_buffer.translate_to(self.cursor.time_point());
                         }
                         InputEvent::CursorRight => {
-                            self.cursor = self
-                                .cursor
-                                .right(self.score_viewport.resolution.duration_b32());
-                            self.selection_buffer =
-                                self.selection_buffer.translate_to(self.cursor.time_point());
+                            self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
+                            self.selection_buffer = self.selection_buffer.translate_to(self.cursor.time_point());
                         }
-                        InputEvent::InsertNoteAtCursor => {
+                        
+                        // Note editing
+                        InputEvent::InsertNote => {
                             self.score.lock().unwrap().insert_or_remove(
                                 self.cursor.pitch(),
                                 self.cursor.time_point(),
                                 self.score_viewport.resolution.duration_b32(),
                             );
-                            self.cursor = self
-                                .cursor
-                                .right(self.score_viewport.resolution.duration_b32());
+                            self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
                         }
-                        InputEvent::StartNoteAtCursor => match self.cursor.mode() {
-                            CursorMode::Move => match *self.mode.lock().unwrap() {
-                                Mode::Select => {
-                                    self.cursor = self.cursor.start_select();
-                                }
-                                Mode::Insert => {
-                                    self.cursor = self.cursor.start_insert();
-                                }
-                                Mode::Normal => {}
-                            },
-                            CursorMode::Insert(onset_b32) => {
+                        InputEvent::StartLongNote => {
+                            self.cursor = self.cursor.start_insert();
+                        }
+                        InputEvent::EndLongNote => {
+                            if let CursorMode::Insert(onset_b32) = self.cursor.mode() {
                                 if onset_b32 < self.cursor.time_point() {
                                     self.score.lock().unwrap().insert_or_remove(
                                         self.cursor.pitch(),
@@ -237,59 +204,55 @@ impl AppState {
                                     );
                                 }
                                 self.cursor = self.cursor.end_insert();
-                                self.cursor = self
-                                    .cursor
-                                    .right(self.score_viewport.resolution.duration_b32());
+                                self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
                             }
-                            CursorMode::Select(pitch, onset_b32) => {
-                                self.cursor = self.cursor.end_select();
-                            }
-                            CursorMode::Yank => {}
-                        },
+                        }
+                        
+                        // Selection and clipboard
                         InputEvent::Cancel => {
                             self.cursor = self.cursor.cancel();
                             self.selection_buffer = SelectionBuffer::None;
                         }
                         InputEvent::Yank => {
-                            let selection_range = self.cursor.selection_range().unwrap();
-                            let selection_score = self
-                                .score
-                                .lock()
-                                .unwrap()
-                                .clone_at_selection(selection_range);
-                            self.cursor = self
-                                .cursor
-                                .yank()
-                                .right(self.score_viewport.resolution.duration_b32());
-                            self.selection_buffer = SelectionBuffer::Score(
-                                selection_score.translate(Some(self.cursor.time_point())),
-                            );
+                            if let CursorMode::Select(_, _) = self.cursor.mode() {
+                                let selection_range = self.cursor.selection_range().unwrap();
+                                let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range);
+                                self.cursor = self.cursor.yank().right(self.score_viewport.resolution.duration_b32());
+                                self.selection_buffer = SelectionBuffer::Score(
+                                    selection_score.translate(Some(self.cursor.time_point())),
+                                );
+                            }
                         }
-                        InputEvent::Cut => {}
+                        InputEvent::Cut => {
+                            if let CursorMode::Select(_, _) = self.cursor.mode() {
+                                let selection_range = self.cursor.selection_range().unwrap();
+                                let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range);
+                                self.score.lock().unwrap().delete_in_selection(selection_range);
+                                self.cursor = self.cursor.end_select();
+                                self.selection_buffer = SelectionBuffer::Score(
+                                    selection_score.translate(Some(self.cursor.time_point())),
+                                );
+                            }
+                        }
                         InputEvent::Paste => {
-                            if let SelectionBuffer::Score(ref selection_buffer_score) =
-                                self.selection_buffer
-                            {
+                            if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
                                 let mut score_guard = self.score.lock().unwrap();
                                 *score_guard = score_guard.merge_down(selection_buffer_score);
-
                                 let duration = selection_buffer_score.duration();
                                 self.cursor = self.cursor.right(duration);
                                 self.selection_buffer = SelectionBuffer::Score(
-                                    selection_buffer_score
-                                        .translate(Some(self.cursor.time_point())),
+                                    selection_buffer_score.translate(Some(self.cursor.time_point())),
                                 );
                             }
                         }
                         InputEvent::Delete => {
                             if let Some(selection_range) = self.cursor.selection_range() {
-                                self.score
-                                    .lock()
-                                    .unwrap()
-                                    .delete_in_selection(selection_range);
+                                self.score.lock().unwrap().delete_in_selection(selection_range);
                                 self.cursor = self.cursor.end_select();
                             }
                         }
+                        
+                        // Loop controls
                         InputEvent::ToggleLoopMode => {
                             self.loop_state = self.loop_state.toggle_mode();
                             self.player.lock().unwrap().set_loop_state(self.loop_state);
@@ -298,10 +261,16 @@ impl AppState {
                             self.loop_state = self.loop_state.mark(self.score_viewport.playback_time_point);
                             self.player.lock().unwrap().set_loop_state(self.loop_state);
                         }
+                        
+                        // File operations
                         InputEvent::SaveSong => {
                             if let Err(e) = self.song_file.save(&self.score.lock().unwrap()) {
                                 error!("Failed to save song: {}", e);
                             }
+                        }
+                        
+                        InputEvent::SelectIn => {
+                            self.cursor = self.cursor.start_select();
                         }
                     }
                     self.draw()?;
