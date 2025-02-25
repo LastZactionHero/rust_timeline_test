@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use crate::loop_state::LoopState;
 use std::time::Instant;
 use crate::pitch::Pitch;
+use crate::instruments::{Instrument, InstrumentRegistry};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PlayState {
@@ -24,6 +25,8 @@ pub struct Player {
     ticks_per_b32: u64,
     loop_state: LoopState,
     preview_start: Option<Instant>,
+    instrument_registry: InstrumentRegistry,
+    current_instrument_id: u32,  // Track current instrument ID
 }
 
 impl Player {
@@ -32,6 +35,9 @@ impl Player {
         // For 120 BPM: 44100 samples/sec * 60 sec/min / 120 beats/min / 32 subdivisions = 689.0625 samples/b32
         // Rounding to 689 samples per b32 unit
         let ticks_per_b32 = (sample_rate * 60 / score.lock().unwrap().bpm as u64) / 32;
+
+        // Create instrument registry with default instruments
+        let instrument_registry = InstrumentRegistry::new();
 
         Player {
             score,
@@ -43,6 +49,8 @@ impl Player {
             ticks_per_b32,
             loop_state: LoopState::new(),
             preview_start: None,
+            instrument_registry,
+            current_instrument_id: 0,  // Default to instrument 0
         }
     }
 
@@ -126,13 +134,23 @@ impl Player {
     pub fn preview_note(&mut self, pitch: Pitch) {
         self.state = PlayState::Preview;
         self.active_notes.clear();
+        
+        // Use the current instrument ID from the track editor
+        // This will have been set via set_current_instrument_id before calling preview_note
+        let instrument_id = self.current_instrument_id;
+        
         self.active_notes.push(Note {
             pitch,
             onset_b32: 0,
             duration_b32: 16,
-            instrument_id: 0, // Default instrument ID
+            instrument_id,
         });
         self.preview_start = Some(Instant::now());
+    }
+    
+    /// Set the current instrument ID for previewing notes
+    pub fn set_current_instrument_id(&mut self, instrument_id: u32) {
+        self.current_instrument_id = instrument_id;
     }
 
     pub fn clear_preview(&mut self) {
@@ -182,11 +200,28 @@ impl Iterator for Player {
 
         let mut total_amplitudes: f64 = 0.0;
         for note in &self.active_notes {
-            let frequency = note.pitch.frequency(note.pitch.octave);
-            total_amplitudes +=
-                (2.0 * PI * frequency * (self.tick as f64) / self.sample_rate as f64).sin();
+            // Get the instrument for this note
+            if let Some(instrument) = self.instrument_registry.get_instrument(note.instrument_id) {
+                // Generate sample using the instrument
+                total_amplitudes += instrument.generate_sample(
+                    note.pitch, 
+                    self.tick, 
+                    self.sample_rate
+                );
+            } else {
+                // Fallback to basic sine wave if instrument not found
+                let frequency = note.pitch.frequency(note.pitch.octave);
+                total_amplitudes +=
+                    (2.0 * PI * frequency * (self.tick as f64) / self.sample_rate as f64).sin();
+            }
         }
 
-        Some(total_amplitudes / self.active_notes.len() as f64)
+        // Normalize the output to prevent clipping
+        let output = total_amplitudes / self.active_notes.len() as f64;
+        
+        // Apply a simple limiter to prevent clipping (keep values between -1.0 and 1.0)
+        let limited_output = output.max(-0.95).min(0.95);
+        
+        Some(limited_output)
     }
 }

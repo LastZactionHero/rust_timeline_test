@@ -14,6 +14,7 @@ mod cursor;
 mod draw_components;
 mod events;
 mod gear;
+mod instruments;  // Add the new instruments module
 mod loop_state;
 mod pitch;
 mod player;

@@ -198,7 +198,10 @@ impl Gear for TrackEditorGear {
                     Some(next_pitch) => self.score_viewport.middle_pitch = next_pitch,
                     None => (),
                 }
-                self.player.lock().unwrap().preview_note(self.cursor.pitch());
+                let mut player = self.player.lock().unwrap();
+                // Pass the current instrument ID for the preview
+                player.set_current_instrument_id(self.instrument_id);
+                player.preview_note(self.cursor.pitch());
                 true
             }
             InputEvent::CursorDown => {
@@ -207,7 +210,10 @@ impl Gear for TrackEditorGear {
                     Some(prev_pitch) => self.score_viewport.middle_pitch = prev_pitch,
                     None => (),
                 }
-                self.player.lock().unwrap().preview_note(self.cursor.pitch());
+                let mut player = self.player.lock().unwrap();
+                // Pass the current instrument ID for the preview
+                player.set_current_instrument_id(self.instrument_id);
+                player.preview_note(self.cursor.pitch());
                 true
             }
             InputEvent::CursorLeft => {
