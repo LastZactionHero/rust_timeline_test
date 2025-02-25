@@ -1,7 +1,7 @@
 // song.rs
 
 use crate::pitch::{Pitch, Tone};
-use crate::score::{Note, Score, NoteState};
+use crate::score::Score;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};

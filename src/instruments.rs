@@ -1,5 +1,4 @@
 use std::f64::consts::PI;
-use std::sync::Arc;
 use crate::pitch::Pitch;
 
 pub trait Instrument: Send + Sync {

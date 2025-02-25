@@ -1,12 +1,9 @@
 // score.rs
 
-use std::{collections::HashMap, f32::MAX};
+use std::collections::HashMap;
 use log::debug;
 
-use crate::{
-    pitch::{Pitch, Tone},
-    selection_buffer,
-};
+use crate::pitch::Pitch;
 use crate::selection_range::SelectionRange;
 
 #[derive(Debug, Clone, Copy)]
@@ -66,7 +63,7 @@ impl Score {
     }
 
     pub fn insert_or_remove(&mut self, pitch: Pitch, onset_b32: u64, duration_b32: u64, instrument_id: u32) {
-        let mut notes_starting_at_time = self.notes_starting_at_time(onset_b32, Some(instrument_id));
+        let notes_starting_at_time = self.notes_starting_at_time(onset_b32, Some(instrument_id));
 
         let mut note_found_at_index = None;
         for (index, note) in notes_starting_at_time.iter().enumerate() {

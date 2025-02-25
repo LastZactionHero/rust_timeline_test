@@ -1,11 +1,10 @@
-use crate::score::{ActiveNote, Note, Score};
-use std::collections::HashMap;
+use crate::score::{Note, Score};
 use std::f64::consts::PI;
 use std::sync::{Arc, Mutex};
 use crate::loop_state::LoopState;
 use std::time::Instant;
 use crate::pitch::Pitch;
-use crate::instruments::{Instrument, InstrumentRegistry};
+use crate::instruments::InstrumentRegistry;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum PlayState {

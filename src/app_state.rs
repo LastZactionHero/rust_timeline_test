@@ -11,8 +11,7 @@ use crate::score::Score;
 use crate::score_viewport::ScoreViewport;
 use crate::{
     draw_components::{
-        self, BoxDrawComponent, DrawComponent, DrawResult, NullComponent, Position, VSplitDrawComponent,
-        Window,
+        DrawComponent, DrawResult, Position, Window,
     },
 };
 use crate::{

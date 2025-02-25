@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use super::{DrawComponent, DrawResult};
 use crate::cursor::Cursor;
 use crate::draw_components::Position;

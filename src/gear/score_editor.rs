@@ -5,7 +5,7 @@ use crate::cursor::CursorMode;
 use crate::draw_components::{DrawComponent, BoxDrawComponent, VSplitDrawComponent, NullComponent};
 use crate::draw_components::score_draw_component::ScoreDrawComponent;
 use crate::draw_components::status_bar_component::StatusBarComponent;
-use crate::draw_components::{self, DrawResult, ViewportDrawResult};
+use crate::draw_components::{self, ViewportDrawResult};
 use crate::events::InputEvent;
 use crate::loop_state::LoopState;
 use crate::player::Player;

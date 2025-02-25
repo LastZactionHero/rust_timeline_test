@@ -1,12 +1,8 @@
-use core::panic;
 use std::{
     fmt,
-    sync::{Arc, Mutex},
 };
 
-use crossterm::cursor;
-
-use crate::{pitch::Pitch, score::Score};
+use crate::pitch::Pitch;
 use crate::selection_range::SelectionRange;
 
 #[derive(Clone, Copy)]

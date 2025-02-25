@@ -1,7 +1,7 @@
 mod track_editor;  // Module for track editing
 mod score_editor;  // Module for score editing (all instruments)
 
-use crate::draw_components::{DrawComponent, DrawResult, Position, ViewportDrawResult};
+use crate::draw_components::{DrawComponent, ViewportDrawResult};
 use crate::events::InputEvent;
 
 pub use track_editor::TrackEditorGear;  // Export the track editor gear

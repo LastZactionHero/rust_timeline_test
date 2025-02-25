@@ -106,7 +106,7 @@ impl TrackDrawComponent {
 
     fn draw_track(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> ViewportDrawResult {
         let pitches = self.visible_pitches(pos);
-        let mut time_point = self.score_viewport.time_point;
+        let _time_point = self.score_viewport.time_point;
         debug!("Drawing track with {} visible pitches", pitches.len());
 
         // Draw the empty track.
@@ -209,7 +209,7 @@ impl TrackDrawComponent {
                 time_point += 1;
             }
 
-            for ((row, pitch), state) in col_states {
+            for ((row, _pitch), state) in col_states {
                 let note_char = match state {
                     NoteState::Onset => '█',
                     NoteState::Sustain => '░',

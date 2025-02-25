@@ -5,11 +5,10 @@ use crate::cursor::CursorMode;
 use crate::draw_components::{DrawComponent, BoxDrawComponent, VSplitDrawComponent, NullComponent};
 use crate::draw_components::track_draw_component::TrackDrawComponent;
 use crate::draw_components::status_bar_component::StatusBarComponent;
-use crate::draw_components::{self, DrawResult, ViewportDrawResult};
+use crate::draw_components::{self, ViewportDrawResult};
 use crate::events::InputEvent;
 use crate::loop_state::LoopState;
 use crate::player::Player;
-use crate::resolution::Resolution;
 use crate::score::Score;
 use crate::score_viewport::ScoreViewport;
 use crate::selection_buffer::SelectionBuffer;
@@ -230,7 +229,7 @@ impl Gear for TrackEditorGear {
             // Note editing
             InputEvent::InsertNote => {
                 match self.cursor.mode() {
-                    CursorMode::Select(start, end) => {
+                    CursorMode::Select(_start, _end) => {
                         // Insert notes for the entire selection
                         let selection_range = self.cursor.selection_range().unwrap();
                         let pitch = self.cursor.pitch();
