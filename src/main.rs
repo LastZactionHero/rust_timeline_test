@@ -13,6 +13,7 @@ mod audio;
 mod cursor;
 mod draw_components;
 mod events;
+mod gear;
 mod loop_state;
 mod pitch;
 mod player;

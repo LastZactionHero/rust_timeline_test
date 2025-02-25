@@ -3,6 +3,8 @@ use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use crate::gear::GearType;
+
 pub enum InputEvent {
     ViewerBarNext,
     ViewerBarPrevious,
@@ -27,6 +29,7 @@ pub enum InputEvent {
     SetLoopTimes,
     SaveSong,
     SelectIn,
+    SwitchGear(GearType),  // New event for gear switching
 }
 
 pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
@@ -102,6 +105,13 @@ pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
                         break;
                     }
 
+                    // Gear switching (using the Tab key)
+                    KeyCode::Tab => {
+                        // For now, we only switch to the score editor, but in the future
+                        // we could implement cycling through available gears
+                        tx.send(InputEvent::SwitchGear(GearType::ScoreEditor)).unwrap()
+                    }
+                    
                     // Playback control
                     KeyCode::Char('\\') => tx.send(InputEvent::PlayerTogglePlayback).unwrap(),
 

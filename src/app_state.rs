@@ -2,6 +2,7 @@
 use crate::audio::audio_player;
 use crate::cursor::Cursor;
 use crate::draw_components::ViewportDrawResult;
+use crate::gear::{Gear, GearType, ScoreEditorGear};
 use crate::loop_state::LoopState;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
@@ -9,10 +10,8 @@ use crate::resolution::Resolution;
 use crate::score::Score;
 use crate::score_viewport::ScoreViewport;
 use crate::{
-    cursor::CursorMode,
     draw_components::{
-        self, score_draw_component::ScoreDrawComponent, status_bar_component::StatusBarComponent,
-        BoxDrawComponent, DrawComponent, DrawResult, NullComponent, Position, VSplitDrawComponent,
+        self, BoxDrawComponent, DrawComponent, DrawResult, NullComponent, Position, VSplitDrawComponent,
         Window,
     },
 };
@@ -47,6 +46,8 @@ pub struct AppState {
     viewport_draw_result: Option<ViewportDrawResult>,
     loop_state: LoopState,
     song_file: SongFile,
+    active_gear: Box<dyn Gear>,
+    active_gear_type: GearType,
 }
 
 impl AppState {
@@ -55,21 +56,39 @@ impl AppState {
 
         let player = Player::create(Arc::clone(&score), 44100);
         let shared_player = Arc::new(Mutex::new(player));
+        
+        let score_viewport = ScoreViewport::new(Pitch::new(Tone::C, 4), Resolution::Time1_16, 0, 0);
+        let cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
+        let selection_buffer = SelectionBuffer::None;
+        let loop_state = LoopState::new();
+        
+        // Initialize the score editor gear as the default active gear
+        let score_editor = ScoreEditorGear::new(
+            Arc::clone(&score),
+            score_viewport,
+            Arc::clone(&shared_player),
+            tx.clone(),
+            cursor,
+            selection_buffer.clone(),
+            loop_state,
+        );
 
         AppState {
             score,
-            score_viewport: ScoreViewport::new(Pitch::new(Tone::C, 4), Resolution::Time1_16, 0, 0),
+            score_viewport,
             player: shared_player,
             input_tx: tx,
             input_rx: rx,
             input_thread: None,
             audio_thread: None,
             buffer: None,
-            cursor: Cursor::new(Pitch::new(Tone::C, 4), 0),
-            selection_buffer: SelectionBuffer::None,
+            cursor,
+            selection_buffer,
             viewport_draw_result: None,
-            loop_state: LoopState::new(),
+            loop_state,
             song_file: SongFile::new(),
+            active_gear: Box::new(score_editor),
+            active_gear_type: GearType::ScoreEditor,
         }
     }
 
@@ -103,174 +122,31 @@ impl AppState {
         loop {
             match self.input_rx.recv() {
                 Ok(msg) => {
-                    match msg {
+                    // First check for app-level events that should always be handled here
+                    match &msg {
                         InputEvent::Quit => break,
                         
-                        // Viewer navigation
-                        InputEvent::ViewerOctaveIncrease => {
-                            self.score_viewport = self.score_viewport.next_octave();
-                        }
-                        InputEvent::ViewerOctaveDecrease => {
-                            self.score_viewport = self.score_viewport.prev_octave();
-                        }
-                        InputEvent::ViewerBarNext => {
-                            let current_time = self.player.lock().unwrap().current_time_b32();
-                            let next_time = current_time + 32 - current_time % 32;
-                            self.player.lock().unwrap().set_time_b32(next_time);
-                            self.score_viewport = self.score_viewport.set_playback_time(next_time);
-                            self.score_viewport = self.score_viewport.next_bar(&self.viewport_draw_result.unwrap());
-                        }
-                        InputEvent::ViewerBarPrevious => {
-                            let current_time = self.player.lock().unwrap().current_time_b32();
-                            let prev_time = if current_time < 32 {
-                                0
-                            } else if current_time % 32 == 0 {
-                                current_time - 32
-                            } else {
-                                current_time - (current_time % 32)
-                            };
-                            self.player.lock().unwrap().set_time_b32(prev_time);
-                            self.score_viewport = self.score_viewport.set_playback_time(prev_time);
-                            self.score_viewport = self.score_viewport.prev_bar(&self.viewport_draw_result.unwrap());
+                        // Gear switching
+                        InputEvent::SwitchGear(gear_type) => {
+                            // We need to dereference and clone the gear_type
+                            self.switch_gear((*gear_type).clone());
                         }
                         
-                        // Resolution controls
-                        InputEvent::ViewerResolutionIncrease => {
-                            self.score_viewport = self.score_viewport.increase_resolution();
-                            self.cursor = self.cursor.resolution_align(self.score_viewport.resolution.duration_b32());
-                        }
-                        InputEvent::ViewerResolutionDecrease => {
-                            self.score_viewport = self.score_viewport.decrease_resolution();
-                            self.cursor = self.cursor.resolution_align(self.score_viewport.resolution.duration_b32());
-                        }
+                        // All editor-specific operations now handled by ScoreEditorGear
                         
-                        // Playback controls
-                        InputEvent::PlayerTogglePlayback => {
-                            let mut player_guard = self.player.lock().unwrap();
-                            player_guard.toggle_playback();
-                        }
-                        InputEvent::PlayerBeatChange(playback_time_point_b32) => {
-                            self.score_viewport = self.score_viewport.set_playback_time(playback_time_point_b32);
-                        }
-                        
-                        // Cursor movement
-                        InputEvent::CursorUp => {
-                            self.cursor = self.cursor.up();
-                            match self.score_viewport.middle_pitch.next() {
-                                Some(next_pitch) => self.score_viewport.middle_pitch = next_pitch,
-                                None => (),
+                        // All other events should be passed to the active gear
+                        _ => {
+                            // If the active gear doesn't handle the event, the score editor gear will handle it
+                            let event_handled = self.active_gear.handle_event(&msg);
+                            
+                            // If the gear handles the event, we need to sync up our app state with the gear's internal state
+                            if event_handled {
+                                // In a more complete implementation, we would update the app state from the gear after handling the event
+                                // For now, we'll just acknowledge that the event was handled
                             }
-                            self.player.lock().unwrap().preview_note(self.cursor.pitch());
-                        }
-                        InputEvent::CursorDown => {
-                            self.cursor = self.cursor.down();
-                            match self.score_viewport.middle_pitch.prev() {
-                                Some(prev_pitch) => self.score_viewport.middle_pitch = prev_pitch,
-                                None => (),
-                            }
-                            self.player.lock().unwrap().preview_note(self.cursor.pitch());
-                        }
-                        InputEvent::CursorLeft => {
-                            self.cursor = self.cursor.left(self.score_viewport.resolution.duration_b32());
-                            self.selection_buffer = self.selection_buffer.translate_to(self.cursor.time_point());
-                        }
-                        InputEvent::CursorRight => {
-                            self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
-                            self.selection_buffer = self.selection_buffer.translate_to(self.cursor.time_point());
-                        }
-                        
-                        // Note editing
-                        InputEvent::InsertNote => {
-                            match self.cursor.mode() {
-                                CursorMode::Select(start, end) => {
-                                    // Insert notes for the entire selection
-                                    let selection_range = self.cursor.selection_range().unwrap();
-                                    let pitch = self.cursor.pitch();
-                                    let mut score_guard = self.score.lock().unwrap();
-                                    
-                                    // Calculate duration based on selection time points
-                                    let duration = selection_range.time_point_end_b32 - selection_range.time_point_start_b32;
-                                    score_guard.insert_or_remove(pitch, selection_range.time_point_start_b32, duration);
-                                    
-                                    // Move cursor to end of selection and clear selection mode
-                                    self.cursor = self.cursor.end_select();
-                                }
-                                _ => {
-                                    // Regular single note insertion
-                                    self.score.lock().unwrap().insert_or_remove(
-                                        self.cursor.pitch(),
-                                        self.cursor.time_point(),
-                                        self.score_viewport.resolution.duration_b32(),
-                                    );
-                                    self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
-                                }
-                            }
-                        }
-                        // Selection and clipboard
-                        InputEvent::Cancel => {
-                            self.cursor = self.cursor.cancel();
-                            self.selection_buffer = SelectionBuffer::None;
-                        }
-                        InputEvent::Yank => {
-                            if let CursorMode::Select(_, _) = self.cursor.mode() {
-                                let selection_range = self.cursor.selection_range().unwrap();
-                                let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range);
-                                self.cursor = self.cursor.yank().right(self.score_viewport.resolution.duration_b32());
-                                self.selection_buffer = SelectionBuffer::Score(
-                                    selection_score.translate(Some(self.cursor.time_point())),
-                                );
-                            }
-                        }
-                        InputEvent::Cut => {
-                            if let CursorMode::Select(_, _) = self.cursor.mode() {
-                                let selection_range = self.cursor.selection_range().unwrap();
-                                let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range);
-                                self.score.lock().unwrap().delete_in_selection(selection_range);
-                                self.cursor = self.cursor.end_select();
-                                self.selection_buffer = SelectionBuffer::Score(
-                                    selection_score.translate(Some(self.cursor.time_point())),
-                                );
-                            }
-                        }
-                        InputEvent::Paste => {
-                            if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
-                                let mut score_guard = self.score.lock().unwrap();
-                                *score_guard = score_guard.merge_down(selection_buffer_score);
-                                let duration = selection_buffer_score.duration();
-                                self.cursor = self.cursor.right(duration);
-                                self.selection_buffer = SelectionBuffer::Score(
-                                    selection_buffer_score.translate(Some(self.cursor.time_point())),
-                                );
-                            }
-                        }
-                        InputEvent::Delete => {
-                            if let Some(selection_range) = self.cursor.selection_range() {
-                                self.score.lock().unwrap().delete_in_selection(selection_range);
-                                self.cursor = self.cursor.end_select();
-                            }
-                        }
-                        
-                        // Loop controls
-                        InputEvent::ToggleLoopMode => {
-                            self.loop_state = self.loop_state.toggle_mode();
-                            self.player.lock().unwrap().set_loop_state(self.loop_state);
-                        }
-                        InputEvent::SetLoopTimes => {
-                            self.loop_state = self.loop_state.mark(self.score_viewport.playback_time_point);
-                            self.player.lock().unwrap().set_loop_state(self.loop_state);
-                        }
-                        
-                        // File operations
-                        InputEvent::SaveSong => {
-                            if let Err(e) = self.song_file.save(&self.score.lock().unwrap()) {
-                                error!("Failed to save song: {}", e);
-                            }
-                        }
-                        
-                        InputEvent::SelectIn => {
-                            self.cursor = self.cursor.start_select();
                         }
                     }
+                    
                     self.draw()?;
                 }
                 Err(e) => {
@@ -291,29 +167,11 @@ impl AppState {
             stdout.execute(terminal::Clear(ClearType::All))?;
         }
 
-        let base_component = Window::new(vec![Box::new(BoxDrawComponent::new(Box::new(
-            VSplitDrawComponent::new(
-                draw_components::VSplitStyle::HalfWithDivider,
-                Box::new(ScoreDrawComponent::new(
-                    Arc::clone(&self.score),
-                    self.player.lock().unwrap().state(),
-                    self.score_viewport,
-                    self.input_tx.clone(),
-                    self.cursor,
-                    self.selection_buffer.clone(),
-                    self.loop_state,
-                )),
-                Box::new(VSplitDrawComponent::new(
-                    draw_components::VSplitStyle::StatusBarNoDivider,
-                    Box::new(NullComponent {}),
-                    Box::new(StatusBarComponent::new(
-                        self.cursor,
-                        self.score_viewport,
-                        self.loop_state,
-                    )),
-                )),
-            ),
-        )))]);
+        // Get the active gear's draw component
+        let gear_component = self.active_gear.get_draw_component();
+        
+        // Create the base component
+        let base_component = Window::new(vec![gear_component]);
 
         let position = Position {
             x: 0,
@@ -361,5 +219,29 @@ impl AppState {
 
         self.buffer = Some(buffer);
         Ok(())
+    }
+    
+    /// Switch to the specified gear type
+    pub fn switch_gear(&mut self, gear_type: GearType) {
+        match gear_type {
+            GearType::ScoreEditor => {
+                let score_editor = ScoreEditorGear::new(
+                    Arc::clone(&self.score),
+                    self.score_viewport,
+                    Arc::clone(&self.player),
+                    self.input_tx.clone(),
+                    self.cursor,
+                    self.selection_buffer.clone(),
+                    self.loop_state,
+                );
+                self.active_gear = Box::new(score_editor);
+                self.active_gear_type = GearType::ScoreEditor;
+            }
+            GearType::Mixer => {
+                // In the future, implement Mixer gear
+                // For now, just log that we can't switch to it yet
+                error!("Mixer gear not yet implemented");
+            }
+        }
     }
 }
