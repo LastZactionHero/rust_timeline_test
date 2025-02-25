@@ -1,6 +1,6 @@
 mod score_editor;
 
-use crate::draw_components::{DrawComponent, DrawResult, Position};
+use crate::draw_components::{DrawComponent, DrawResult, Position, ViewportDrawResult};
 use crate::events::InputEvent;
 
 pub use score_editor::ScoreEditorGear;
@@ -15,6 +15,9 @@ pub trait Gear {
     
     /// Get the name of this gear for display purposes
     fn name(&self) -> &'static str;
+    
+    /// Set the viewport draw result from the last render
+    fn set_viewport_draw_result(&mut self, result: ViewportDrawResult);
 }
 
 /// Enum to represent the different types of gear available in the application

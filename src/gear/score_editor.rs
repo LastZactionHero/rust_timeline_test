@@ -5,10 +5,11 @@ use crate::cursor::CursorMode;
 use crate::draw_components::{DrawComponent, BoxDrawComponent, VSplitDrawComponent, NullComponent};
 use crate::draw_components::score_draw_component::ScoreDrawComponent;
 use crate::draw_components::status_bar_component::StatusBarComponent;
-use crate::draw_components::{self, DrawResult};
+use crate::draw_components::{self, DrawResult, ViewportDrawResult};
 use crate::events::InputEvent;
 use crate::loop_state::LoopState;
 use crate::player::Player;
+use crate::resolution::Resolution;
 use crate::score::Score;
 use crate::score_viewport::ScoreViewport;
 use crate::selection_buffer::SelectionBuffer;
@@ -26,6 +27,7 @@ pub struct ScoreEditorGear {
     selection_buffer: SelectionBuffer,
     loop_state: LoopState,
     song_file: SongFile,
+    viewport_draw_result: Option<ViewportDrawResult>,
 }
 
 impl ScoreEditorGear {
@@ -47,6 +49,7 @@ impl ScoreEditorGear {
             selection_buffer,
             loop_state,
             song_file: SongFile::new(),
+            viewport_draw_result: None,
         }
     }
 }
@@ -77,6 +80,9 @@ impl Gear for ScoreEditorGear {
             ),
         )))
     }
+    fn set_viewport_draw_result(&mut self, result: ViewportDrawResult) {
+        self.viewport_draw_result = Some(result);
+    }
 
     fn handle_event(&mut self, event: &InputEvent) -> bool {
         // Return true if event was handled, false otherwise
@@ -96,11 +102,16 @@ impl Gear for ScoreEditorGear {
                 self.player.lock().unwrap().set_time_b32(next_time);
                 self.score_viewport = self.score_viewport.set_playback_time(next_time);
                 
-                // We need viewport_draw_result for this, but we don't have it directly
-                // Let's just use the time_point and add a bar length
-                self.score_viewport = self.score_viewport.set_time_point(
-                    self.score_viewport.time_point + 32
-                );
+                // Use the actual viewport draw result from the last render if available
+                if let Some(viewport_result) = self.viewport_draw_result {
+                    // Now use next_bar with the actual viewport result
+                    self.score_viewport = self.score_viewport.next_bar(&viewport_result);
+                } else {
+                    // Fallback to a simple implementation if no viewport result is available
+                    self.score_viewport = self.score_viewport.set_time_point(
+                        self.score_viewport.time_point + 32
+                    );
+                }
                 true
             }
             InputEvent::ViewerBarPrevious => {
@@ -115,14 +126,19 @@ impl Gear for ScoreEditorGear {
                 self.player.lock().unwrap().set_time_b32(prev_time);
                 self.score_viewport = self.score_viewport.set_playback_time(prev_time);
                 
-                // We need viewport_draw_result for this, but we don't have it directly
-                // Let's just use the time_point and subtract a bar length
-                let new_time = if self.score_viewport.time_point >= 32 {
-                    self.score_viewport.time_point - 32
+                // Use the actual viewport draw result from the last render if available
+                if let Some(viewport_result) = self.viewport_draw_result {
+                    // Now use prev_bar with the actual viewport result
+                    self.score_viewport = self.score_viewport.prev_bar(&viewport_result);
                 } else {
-                    0
-                };
-                self.score_viewport = self.score_viewport.set_time_point(new_time);
+                    // Fallback to a simple implementation if no viewport result is available
+                    let new_time = if self.score_viewport.time_point >= 32 {
+                        self.score_viewport.time_point - 32
+                    } else {
+                        0
+                    };
+                    self.score_viewport = self.score_viewport.set_time_point(new_time);
+                }
                 true
             }
             

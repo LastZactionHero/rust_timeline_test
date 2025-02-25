@@ -183,7 +183,12 @@ impl AppState {
         for draw_result in draw_results {
             match draw_result {
                 DrawResult::ViewportDrawResult(viewport_draw_result) => {
+                    // Store the viewport draw result in AppState
                     self.viewport_draw_result = Some(viewport_draw_result);
+                    
+                    // Also pass it to the active gear
+                    self.active_gear.set_viewport_draw_result(viewport_draw_result);
+                    
                     let player = self.player.lock().unwrap();
                     if player.is_playing()
                         && (player.current_time_b32() < viewport_draw_result.time_point_start
