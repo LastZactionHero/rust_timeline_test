@@ -2,7 +2,7 @@
 use crate::audio::audio_player;
 use crate::cursor::Cursor;
 use crate::draw_components::ViewportDrawResult;
-use crate::gear::{Gear, GearType, ScoreEditorGear};
+use crate::gear::{Gear, GearType, TrackEditorGear};
 use crate::loop_state::LoopState;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
@@ -62,8 +62,8 @@ impl AppState {
         let selection_buffer = SelectionBuffer::None;
         let loop_state = LoopState::new();
         
-        // Initialize the score editor gear as the default active gear
-        let score_editor = ScoreEditorGear::new(
+        // Initialize the track editor gear as the default active gear
+        let track_editor = TrackEditorGear::new(
             Arc::clone(&score),
             score_viewport,
             Arc::clone(&shared_player),
@@ -87,8 +87,8 @@ impl AppState {
             viewport_draw_result: None,
             loop_state,
             song_file: SongFile::new(),
-            active_gear: Box::new(score_editor),
-            active_gear_type: GearType::ScoreEditor,
+            active_gear: Box::new(track_editor),
+            active_gear_type: GearType::TrackEditor,
         }
     }
 
@@ -131,9 +131,7 @@ impl AppState {
                             // We need to dereference and clone the gear_type
                             self.switch_gear((*gear_type).clone());
                         }
-                        
-                        // All editor-specific operations now handled by ScoreEditorGear
-                        
+                                                
                         // All other events should be passed to the active gear
                         _ => {
                             // If the active gear doesn't handle the event, the score editor gear will handle it
@@ -229,8 +227,8 @@ impl AppState {
     /// Switch to the specified gear type
     pub fn switch_gear(&mut self, gear_type: GearType) {
         match gear_type {
-            GearType::ScoreEditor => {
-                let score_editor = ScoreEditorGear::new(
+            GearType::TrackEditor => {
+                let track_editor = TrackEditorGear::new(
                     Arc::clone(&self.score),
                     self.score_viewport,
                     Arc::clone(&self.player),
@@ -239,8 +237,8 @@ impl AppState {
                     self.selection_buffer.clone(),
                     self.loop_state,
                 );
-                self.active_gear = Box::new(score_editor);
-                self.active_gear_type = GearType::ScoreEditor;
+                self.active_gear = Box::new(track_editor);
+                self.active_gear_type = GearType::TrackEditor;
             }
             GearType::Mixer => {
                 // In the future, implement Mixer gear

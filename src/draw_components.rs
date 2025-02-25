@@ -1,6 +1,7 @@
 use crate::pitch::Pitch;
 
-pub mod score_draw_component;
+pub mod score_draw_component;  // Keep this for backward compatibility for now
+pub mod track_draw_component;  // New module for track editing
 pub mod status_bar_component;
 
 #[derive(Clone, Copy)]

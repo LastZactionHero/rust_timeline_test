@@ -107,9 +107,9 @@ pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
 
                     // Gear switching (using the Tab key)
                     KeyCode::Tab => {
-                        // For now, we only switch to the score editor, but in the future
+                        // For now, we only switch to the track editor, but in the future
                         // we could implement cycling through available gears
-                        tx.send(InputEvent::SwitchGear(GearType::ScoreEditor)).unwrap()
+                        tx.send(InputEvent::SwitchGear(GearType::TrackEditor)).unwrap()
                     }
                     
                     // Playback control

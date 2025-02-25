@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use crate::cursor::Cursor;
 use crate::cursor::CursorMode;
 use crate::draw_components::{DrawComponent, BoxDrawComponent, VSplitDrawComponent, NullComponent};
-use crate::draw_components::score_draw_component::ScoreDrawComponent;
+use crate::draw_components::track_draw_component::TrackDrawComponent;
 use crate::draw_components::status_bar_component::StatusBarComponent;
 use crate::draw_components::{self, DrawResult, ViewportDrawResult};
 use crate::events::InputEvent;
@@ -18,7 +18,7 @@ use log::error;
 
 use super::Gear;
 
-pub struct ScoreEditorGear {
+pub struct TrackEditorGear {
     score: Arc<Mutex<Score>>,
     score_viewport: ScoreViewport,
     player: Arc<Mutex<Player>>,
@@ -30,7 +30,7 @@ pub struct ScoreEditorGear {
     viewport_draw_result: Option<ViewportDrawResult>,
 }
 
-impl ScoreEditorGear {
+impl TrackEditorGear {
     pub fn new(
         score: Arc<Mutex<Score>>,
         score_viewport: ScoreViewport,
@@ -54,12 +54,12 @@ impl ScoreEditorGear {
     }
 }
 
-impl Gear for ScoreEditorGear {
+impl Gear for TrackEditorGear {
     fn get_draw_component(&self) -> Box<dyn DrawComponent> {
         Box::new(BoxDrawComponent::new(Box::new(
             VSplitDrawComponent::new(
                 draw_components::VSplitStyle::HalfWithDivider,
-                Box::new(ScoreDrawComponent::new(
+                Box::new(TrackDrawComponent::new(
                     Arc::clone(&self.score),
                     self.player.lock().unwrap().state(),
                     self.score_viewport,
@@ -80,6 +80,7 @@ impl Gear for ScoreEditorGear {
             ),
         )))
     }
+    
     fn set_viewport_draw_result(&mut self, result: ViewportDrawResult) {
         self.viewport_draw_result = Some(result);
     }
@@ -300,6 +301,6 @@ impl Gear for ScoreEditorGear {
     }
 
     fn name(&self) -> &'static str {
-        "Score Editor"
+        "Track Editor"
     }
 }
