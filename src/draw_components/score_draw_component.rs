@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 
-use super::{DrawComponent, DrawResult, ViewportDrawResult};
+use super::{DrawComponent, DrawResult, ViewportDrawResult, ScoreViewDrawComponent, Position};
 use crate::cursor::Cursor;
-use crate::draw_components::Position;
 use crate::events::InputEvent;
 use crate::pitch::Pitch;
 use crate::player::PlayState;
@@ -11,26 +10,22 @@ use crate::score::{ActiveNote, NoteState, Score};
 use crate::score_viewport::ScoreViewport;
 use crate::selection_buffer::SelectionBuffer;
 use log::debug;
-use crate::loop_state::{LoopState, LoopMode};
+use crate::loop_state::LoopState;
 
 pub struct ScoreDrawComponent {
-    score: Arc<Mutex<Score>>,
-    play_state: PlayState,
-    score_viewport: ScoreViewport,
-    event_tx: mpsc::Sender<InputEvent>,
-    cursor: Cursor,
-    selection_buffer: SelectionBuffer,
-    loop_state: LoopState,
+    base: ScoreViewDrawComponent,
 }
 
 impl DrawComponent for ScoreDrawComponent {
-    fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> Vec<DrawResult> {
+    fn draw(&self, buffer: &mut Vec<Vec<char>>, pos: &Position) -> Vec<DrawResult> {
         debug!(
             "Drawing score at position: x={}, y={}, w={}, h={}",
             pos.x, pos.y, pos.w, pos.h
         );
 
-        self.draw_pitches(buffer, pos);
+        let pitches = self.visible_pitches(pos);
+        self.base.draw_pitches(buffer, pos, &pitches);
+        
         let viewport_draw_result = self.draw_score(
             buffer,
             &Position {
@@ -55,20 +50,22 @@ impl ScoreDrawComponent {
         loop_state: LoopState,
     ) -> ScoreDrawComponent {
         ScoreDrawComponent {
-            score,
-            play_state,
-            score_viewport,
-            event_tx: tx,
-            cursor,
-            selection_buffer,
-            loop_state,
+            base: ScoreViewDrawComponent::new(
+                score, 
+                play_state, 
+                score_viewport, 
+                tx, 
+                cursor, 
+                selection_buffer, 
+                loop_state
+            ),
         }
     }
 
     fn visible_pitches(&self, pos: &Position) -> Vec<Pitch> {
         let num_pitches_to_display = pos.h;
 
-        let middle_pitch = self.score_viewport.middle_pitch;
+        let middle_pitch = self.base.score_viewport.middle_pitch;
         let mut pitches = vec![middle_pitch];
         for _ in 0..(num_pitches_to_display / 2) {
             if let Some(prev_pitch) = pitches.last().unwrap().prev() {
@@ -85,63 +82,38 @@ impl ScoreDrawComponent {
         pitches
     }
 
-    fn draw_score(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> ViewportDrawResult {
+    fn draw_score(&self, buffer: &mut Vec<Vec<char>>, pos: &Position) -> ViewportDrawResult {
         let pitches = self.visible_pitches(pos);
-        let _time_point = self.score_viewport.time_point;
         debug!("Drawing score with {} visible pitches", pitches.len());
 
-        // Draw the empty score.
-        for col in 0..pos.w - 1 {
-            let bar_col = col % (self.score_viewport.resolution.bar_length_in_beats()) == 0;
-            for (row, _pitch) in pitches.iter().enumerate() {
-                let draw_char = if bar_col { '⎸' } else { '.' };
-                self.wb(buffer, pos, col, row, draw_char);
-            }
+        // Draw the empty grid with time markers
+        self.base.draw_grid(buffer, pos, &pitches);
 
-            if bar_col {
-                let time_point_at_col = self.score_viewport.time_point
-                    + (col as u64) * self.score_viewport.resolution.duration_b32();
-                self.wb_string(
-                    buffer,
-                    pos,
-                    col,
-                    pitches.len(),
-                    (time_point_at_col / (32)).to_string(),
-                );
-            }
+        // Draw playhead and loop markers
+        let time_point = self.base.draw_playhead(buffer, pos, &pitches);
+
+        // Draw notes with instrument-specific characters
+        self.draw_score_notes(buffer, pos, &pitches);
+
+        // Draw the cursor
+        self.base.draw_cursor(buffer, pos, &pitches);
+
+        ViewportDrawResult {
+            pitch_low: *pitches.last().unwrap(),
+            pitch_high: *pitches.first().unwrap(),
+            time_point_start: self.base.score_viewport.time_point,
+            time_point_end: time_point,
         }
+    }
 
-        // Draw the playhead and loop markers
-        let mut time_point = self.score_viewport.time_point;
-        for col in 0..pos.w - 1 {
-            for _ in 0..self.score_viewport.resolution.duration_b32() {
-                for (row, _pitch) in pitches.iter().enumerate() {
-                    if time_point == self.score_viewport.playback_time_point {
-                        self.wb(buffer, pos, col, row, '░');
-                    } else if self.loop_state.mode == LoopMode::Looping {
-                        // Show loop start/end markers if loop mode is enabled
-                        if let Some(start_time) = self.loop_state.start_time_b32 {
-                            if time_point == start_time {
-                                self.wb(buffer, pos, col, row, '░');
-                            }
-                        }
-                        if let Some(end_time) = self.loop_state.end_time_b32 {
-                            if time_point == end_time {
-                                self.wb(buffer, pos, col, row, '░');
-                            }
-                        }
-                    }
-                }
-                time_point += 1;
-            }
-        }
-
-        let mut time_point = self.score_viewport.time_point;
+    fn draw_score_notes(&self, buffer: &mut Vec<Vec<char>>, pos: &Position, pitches: &Vec<Pitch>) {
+        let mut time_point = self.base.score_viewport.time_point;
+        
         for col in 0..pos.w - 1 {
             let mut col_states: HashMap<(usize, Pitch), (NoteState, u32)> = HashMap::new();
 
-            for _ in 0..self.score_viewport.resolution.duration_b32() {
-                let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point, None);
+            for _ in 0..self.base.score_viewport.resolution.duration_b32() {
+                let active_notes = self.base.score.lock().unwrap().notes_active_at_time(time_point, None);
 
                 for (row, pitch) in pitches.iter().enumerate() {
                     if let Some(active_notes) = active_notes
@@ -170,7 +142,7 @@ impl ScoreDrawComponent {
                     }
                 }
 
-                if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
+                if let SelectionBuffer::Score(ref selection_buffer_score) = self.base.selection_buffer {
                     let selected_notes = selection_buffer_score.notes_active_at_time(time_point, None);
                     let selected_notes_map: HashMap<Pitch, ActiveNote> = selected_notes
                         .into_iter()
@@ -215,32 +187,8 @@ impl ScoreDrawComponent {
                     NoteState::Release => release_char,
                 };
                 
-                self.wb(buffer, pos, col, row, note_char);
+                DrawComponent::wb(self, buffer, pos, col, row, note_char);
             }
-        }
-
-        // Draw the cursor - iterate over each time point and pitch.
-        let mut time_point = self.score_viewport.time_point;
-        for col in 0..pos.w - 1 {
-            for (row, pitch) in pitches.iter().enumerate() {
-                if self.cursor.visible_at(*pitch, time_point) {
-                    self.wb(buffer, pos, col, row, 'C');
-                }
-            }
-            time_point += self.score_viewport.resolution.duration_b32();
-        }
-
-        ViewportDrawResult {
-            pitch_low: *pitches.last().unwrap(),
-            pitch_high: *pitches.first().unwrap(),
-            time_point_start: self.score_viewport.time_point,
-            time_point_end: time_point,
-        }
-    }
-
-    fn draw_pitches(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) {
-        for (i, pitch) in self.visible_pitches(pos).iter().enumerate() {
-            self.wb_string(buffer, pos, 0, i, pitch.as_str());
         }
     }
 }
@@ -250,6 +198,7 @@ mod tests {
     use super::*;
     use crate::pitch::{Pitch, Tone};
     use crate::resolution::Resolution;
+    use crate::loop_state::LoopMode;
     use std::sync::mpsc;
 
     fn create_test_score_draw_component() -> ScoreDrawComponent {
@@ -302,13 +251,10 @@ mod tests {
         let results = component.draw(&mut buffer, &pos);
         
         assert_eq!(results.len(), 1);
-        match &results[0] {
-            DrawResult::ViewportDrawResult(vdr) => {
-                assert!(vdr.time_point_start <= vdr.time_point_end);
-                assert!(vdr.pitch_low <= vdr.pitch_high);
-            },
-            _ => panic!("Expected ViewportDrawResult"),
-        }
+        if let DrawResult::ViewportDrawResult(vdr) = &results[0] {
+            assert!(vdr.time_point_start <= vdr.time_point_end);
+            assert!(vdr.pitch_low <= vdr.pitch_high);
+        } 
     }
 
     #[test]
@@ -318,7 +264,7 @@ mod tests {
         let pos = Position { x: 0, y: 0, w: 10, h: 5 };
         
         {
-            let mut score = component.score.lock().unwrap();
+            let mut score = component.base.score.lock().unwrap();
             score.insert(Pitch::new(Tone::C, 4), 0, 32, 0);
         }
         
@@ -334,7 +280,7 @@ mod tests {
         let pos = Position { x: 0, y: 0, w: 20, h: 7 };
         
         {
-            let mut score = component.score.lock().unwrap();
+            let mut score = component.base.score.lock().unwrap();
             // Place notes at different pitches but same time
             score.insert(Pitch::new(Tone::C, 4), 0, 32, 0); // Instrument 0, lower pitch
             score.insert(Pitch::new(Tone::D, 4), 0, 32, 1); // Instrument 1, higher pitch
@@ -394,7 +340,7 @@ mod tests {
         let mut buffer = create_buffer(10, 5);
         let pos = Position { x: 0, y: 0, w: 10, h: 5 };
         
-        component.cursor = component.cursor.show();
+        component.base.cursor = component.base.cursor.show();
         
         component.draw(&mut buffer, &pos);
         
@@ -408,7 +354,7 @@ mod tests {
         let mut buffer = create_buffer(10, 5);
         let pos = Position { x: 0, y: 0, w: 10, h: 5 };
         
-        component.loop_state = component.loop_state
+        component.base.loop_state = component.base.loop_state
             .mark(0)
             .mark(32)
             .set_mode(LoopMode::Looping);
