@@ -330,3 +330,227 @@ impl Gear for TrackEditorGear {
         "Track Editor"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pitch::{Pitch, Tone};
+    use std::sync::mpsc;
+    use std::collections::HashMap;
+    use crate::resolution::Resolution;
+    use crate::draw_components::Position;
+
+    fn create_test_gear() -> TrackEditorGear {
+        let (tx, _rx) = mpsc::channel();
+        let score = Arc::new(Mutex::new(Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        }));
+        let player = Arc::new(Mutex::new(Player::create(score.clone(), 44100)));
+        
+        TrackEditorGear::new(
+            score,
+            ScoreViewport::new(
+                Pitch::new(Tone::C, 4),
+                Resolution::Time1_16,
+                0,
+                0
+            ),
+            player,
+            tx,
+            Cursor::new(Pitch::new(Tone::C, 4), 0),
+            SelectionBuffer::None,
+            LoopState::new(),
+            0, // Test with instrument_id 0
+        )
+    }
+
+    #[test]
+    fn test_gear_creation() {
+        let gear = create_test_gear();
+        assert_eq!(gear.name(), "Track Editor");
+        assert!(gear.viewport_draw_result.is_none());
+        assert_eq!(gear.instrument_id, 0);
+    }
+
+    #[test]
+    fn test_get_draw_component() {
+        let gear = create_test_gear();
+        let component = gear.get_draw_component();
+        let pos = Position { x: 0, y: 0, w: 40, h: 20 };
+        let mut buffer = vec![vec![' '; pos.w]; pos.h];
+        
+        // Draw should return a vector of results without panicking
+        let results = component.draw(&mut buffer, &pos);
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_navigation_controls() {
+        let mut gear = create_test_gear();
+        
+        // Test octave navigation
+        assert!(gear.handle_event(&InputEvent::ViewerOctaveIncrease));
+        assert_eq!(gear.score_viewport.middle_pitch, Pitch::new(Tone::Cs, 4));
+        
+        assert!(gear.handle_event(&InputEvent::ViewerOctaveDecrease));
+        assert_eq!(gear.score_viewport.middle_pitch, Pitch::new(Tone::C, 4));
+        
+        // Test bar navigation
+        assert!(gear.handle_event(&InputEvent::ViewerBarNext));
+        assert_eq!(gear.score_viewport.time_point, 32);
+        
+        assert!(gear.handle_event(&InputEvent::ViewerBarPrevious));
+        assert_eq!(gear.score_viewport.time_point, 0);
+    }
+
+    #[test]
+    fn test_resolution_controls() {
+        let mut gear = create_test_gear();
+        
+        // Test resolution increase
+        assert!(gear.handle_event(&InputEvent::ViewerResolutionIncrease));
+        assert_eq!(gear.score_viewport.resolution, Resolution::Time1_32);
+        
+        // Test resolution decrease
+        assert!(gear.handle_event(&InputEvent::ViewerResolutionDecrease));
+        assert_eq!(gear.score_viewport.resolution, Resolution::Time1_16);
+    }
+
+    #[test]
+    fn test_cursor_movement() {
+        let mut gear = create_test_gear();
+        
+        // Test cursor up/down
+        assert!(gear.handle_event(&InputEvent::CursorUp));
+        assert_eq!(gear.cursor.pitch(), Pitch::new(Tone::Cs, 4));
+        
+        assert!(gear.handle_event(&InputEvent::CursorDown));
+        assert_eq!(gear.cursor.pitch(), Pitch::new(Tone::C, 4));
+        
+        // Test cursor left/right
+        assert!(gear.handle_event(&InputEvent::CursorRight));
+        assert_eq!(gear.cursor.time_point(), 2); // Based on Time1_16 resolution
+        
+        assert!(gear.handle_event(&InputEvent::CursorLeft));
+        assert_eq!(gear.cursor.time_point(), 0);
+    }
+
+    #[test]
+    fn test_note_insertion() {
+        let mut gear = create_test_gear();
+        
+        // Test single note insertion at time 0
+        assert!(gear.handle_event(&InputEvent::InsertNote));
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, Some(0)); // Filter for instrument 0
+            assert_eq!(notes.len(), 1, "Should have one note after insertion");
+            assert_eq!(notes[0].pitch, Pitch::new(Tone::C, 4));
+            assert_eq!(notes[0].instrument_id, 0);
+        }
+        
+        // Move cursor back to time 0
+        gear.cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
+        
+        // Test note removal by inserting at the same position
+        assert!(gear.handle_event(&InputEvent::InsertNote));
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, Some(0));
+            assert!(notes.is_empty(), "Note should be removed after second insertion");
+        }
+    }
+
+    #[test]
+    fn test_selection_operations() {
+        let mut gear = create_test_gear();
+        
+        // Set a valid resolution
+        gear.score_viewport.resolution = Resolution::Time1_16;
+        
+        // Add a test note
+        {
+            let mut score_guard = gear.score.lock().unwrap();
+            let note = crate::score::Note {
+                pitch: Pitch::new(Tone::C, 4),
+                onset_b32: 0,
+                duration_b32: 2,
+                instrument_id: 0,
+            };
+            score_guard.notes.entry(0).or_insert_with(Vec::new).push(note);
+            score_guard.rebuild_active_notes();
+        }
+        
+        // Verify note was added
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, Some(0));
+            assert!(!notes.is_empty(), "Note should be present");
+        }
+        
+        // Test selection and deletion
+        gear.cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
+        assert!(gear.handle_event(&InputEvent::SelectIn));
+        assert!(gear.handle_event(&InputEvent::CursorRight));
+        assert!(gear.handle_event(&InputEvent::Delete));
+        
+        // Verify note was deleted
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, Some(0));
+            assert!(notes.is_empty(), "Note should be deleted");
+        }
+    }
+
+    #[test]
+    fn test_copy_paste_operations() {
+        let mut gear = create_test_gear();
+        
+        // Insert a note at time 0
+        assert!(gear.handle_event(&InputEvent::InsertNote));
+        
+        // Move cursor back to time 0 and select the note
+        gear.cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
+        assert!(gear.handle_event(&InputEvent::SelectIn));
+        assert!(gear.handle_event(&InputEvent::CursorRight));
+        
+        // Yank (copy) the selection
+        assert!(gear.handle_event(&InputEvent::Yank));
+        
+        // Verify the original note is still there
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, Some(0));
+            assert_eq!(notes.len(), 1, "Should still have original note");
+        }
+        
+        // Paste at current position
+        assert!(gear.handle_event(&InputEvent::Paste));
+        
+        // Verify both notes exist
+        {
+            let score_guard = gear.score.lock().unwrap();
+            
+            let notes_at_0 = score_guard.notes_starting_at_time(0, Some(0));
+            assert_eq!(notes_at_0.len(), 1, "Should have original note");
+            
+            let notes_at_4 = score_guard.notes_starting_at_time(4, Some(0));
+            assert_eq!(notes_at_4.len(), 1, "Should have pasted note");
+            
+            // Verify note properties
+            if let Some(note) = notes_at_0.first() {
+                assert_eq!(note.onset_b32, 0);
+                assert_eq!(note.duration_b32, 2);
+                assert_eq!(note.instrument_id, 0);
+            }
+            
+            if let Some(note) = notes_at_4.first() {
+                assert_eq!(note.onset_b32, 4);
+                assert_eq!(note.duration_b32, 2);
+                assert_eq!(note.instrument_id, 0);
+            }
+        }
+    }
+}

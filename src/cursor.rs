@@ -41,12 +41,19 @@ impl Cursor {
     }
 
     pub fn resolution_align(self, duration: u64) -> Cursor {
+        if duration == 0 {
+            return self; // Avoid division by zero
+        }
         let mut next_cursor = self;
         next_cursor.time_point = next_cursor.time_point - next_cursor.time_point % duration;
         next_cursor
     }
 
     pub fn left(self, duration: u64) -> Cursor {
+        if duration == 0 {
+            return self; // Avoid division by zero
+        }
+        
         let mut next_cursor = self;
 
         // Don't allow moving cursor before onset on insert.
@@ -67,6 +74,10 @@ impl Cursor {
     }
 
     pub fn right(self, duration: u64) -> Cursor {
+        if duration == 0 {
+            return self; // Avoid division by zero
+        }
+        
         let mut next_cursor = self;
         next_cursor.time_point += duration;
         next_cursor.time_point = next_cursor.time_point - next_cursor.time_point % duration;

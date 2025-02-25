@@ -357,3 +357,253 @@ impl Gear for ScoreEditorGear {
         "Score Editor"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pitch::{Pitch, Tone};
+    use std::sync::mpsc;
+    use std::collections::HashMap;
+    use crate::resolution::Resolution;
+    use crate::loop_state::LoopMode;
+    use crate::draw_components::Position;
+
+    fn create_test_gear() -> ScoreEditorGear {
+        let (tx, _rx) = mpsc::channel();
+        let score = Arc::new(Mutex::new(Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        }));
+        let player = Arc::new(Mutex::new(Player::create(score.clone(), 44100)));
+        
+        ScoreEditorGear::new(
+            score,
+            ScoreViewport::new(
+                Pitch::new(Tone::C, 4),
+                Resolution::Time1_16,
+                0,
+                0
+            ),
+            player,
+            tx,
+            Cursor::new(Pitch::new(Tone::C, 4), 0),
+            SelectionBuffer::None,
+            LoopState::new(),
+        )
+    }
+
+    #[test]
+    fn test_gear_creation() {
+        let gear = create_test_gear();
+        assert_eq!(gear.name(), "Score Editor");
+        assert!(gear.viewport_draw_result.is_none());
+    }
+
+    #[test]
+    fn test_get_draw_component() {
+        let gear = create_test_gear();
+        let component = gear.get_draw_component();
+        let pos = Position { x: 0, y: 0, w: 40, h: 20 };
+        let mut buffer = vec![vec![' '; pos.w]; pos.h];
+        
+        // Draw should return a vector of results without panicking
+        let results = component.draw(&mut buffer, &pos);
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_viewer_navigation() {
+        let mut gear = create_test_gear();
+        
+        // Test octave navigation
+        assert!(gear.handle_event(&InputEvent::ViewerOctaveIncrease));
+        assert_eq!(gear.score_viewport.middle_pitch, Pitch::new(Tone::Cs, 4));
+        
+        assert!(gear.handle_event(&InputEvent::ViewerOctaveDecrease));
+        assert_eq!(gear.score_viewport.middle_pitch, Pitch::new(Tone::C, 4));
+        
+        // Test bar navigation
+        assert!(gear.handle_event(&InputEvent::ViewerBarNext));
+        assert_eq!(gear.score_viewport.time_point, 32);
+        
+        assert!(gear.handle_event(&InputEvent::ViewerBarPrevious));
+        assert_eq!(gear.score_viewport.time_point, 0);
+    }
+
+    #[test]
+    fn test_resolution_controls() {
+        let mut gear = create_test_gear();
+        
+        // Test resolution increase
+        assert!(gear.handle_event(&InputEvent::ViewerResolutionIncrease));
+        assert_eq!(gear.score_viewport.resolution, Resolution::Time1_32);
+        
+        // Test resolution decrease
+        assert!(gear.handle_event(&InputEvent::ViewerResolutionDecrease));
+        assert_eq!(gear.score_viewport.resolution, Resolution::Time1_16);
+    }
+
+    #[test]
+    fn test_cursor_movement() {
+        let mut gear = create_test_gear();
+        
+        // Test cursor up/down
+        assert!(gear.handle_event(&InputEvent::CursorUp));
+        assert_eq!(gear.cursor.pitch(), Pitch::new(Tone::Cs, 4));
+        
+        assert!(gear.handle_event(&InputEvent::CursorDown));
+        assert_eq!(gear.cursor.pitch(), Pitch::new(Tone::C, 4));
+        
+        // Test cursor left/right
+        assert!(gear.handle_event(&InputEvent::CursorRight));
+        assert_eq!(gear.cursor.time_point(), 2); // Based on Time1_16 resolution
+        
+        assert!(gear.handle_event(&InputEvent::CursorLeft));
+        assert_eq!(gear.cursor.time_point(), 0);
+    }
+
+    #[test]
+    fn test_note_insertion() {
+        let mut gear = create_test_gear();
+        
+        // Test single note insertion at time 0
+        assert!(gear.handle_event(&InputEvent::InsertNote));
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, None);
+            assert_eq!(notes.len(), 1, "Should have one note after insertion");
+            assert_eq!(notes[0].pitch, Pitch::new(Tone::C, 4));
+            assert_eq!(notes[0].instrument_id, 0);
+        }
+        
+        // Move cursor back to time 0
+        gear.cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
+        
+        // Test note removal by inserting at the same position
+        assert!(gear.handle_event(&InputEvent::InsertNote));
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, None);
+            assert!(notes.is_empty(), "Note should be removed after second insertion");
+        }
+    }
+
+    #[test]
+    fn test_selection_operations() {
+        // This is a minimal test to verify that selection and delete operations 
+        // don't crash when operating on a score with notes
+        
+        let mut gear = create_test_gear();
+        
+        // Set a valid resolution
+        gear.score_viewport.resolution = Resolution::Time1_16;
+        
+        // Manually add a test note directly to the score
+        {
+            let mut score_guard = gear.score.lock().unwrap();
+            let note = crate::score::Note {
+                pitch: Pitch::new(Tone::C, 4),
+                onset_b32: 0,
+                duration_b32: 2,
+                instrument_id: 0,
+            };
+            score_guard.notes.entry(0).or_insert_with(Vec::new).push(note);
+            score_guard.rebuild_active_notes();
+        }
+        
+        // Verify note was added
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, None);
+            assert!(!notes.is_empty(), "Note should be present");
+        }
+        
+        // Move cursor and start selection
+        gear.cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
+        assert!(gear.handle_event(&InputEvent::SelectIn));
+        
+        // Extend selection
+        assert!(gear.handle_event(&InputEvent::CursorRight));
+        
+        // Delete selection
+        assert!(gear.handle_event(&InputEvent::Delete));
+        
+        // Verify note was deleted
+        {
+            let score_guard = gear.score.lock().unwrap();
+            let notes = score_guard.notes_starting_at_time(0, None);
+            assert!(notes.is_empty(), "Note should be deleted");
+        }
+        
+        // The test passes if we get here without crashing
+    }
+    
+    // Paste operation test is tricky - in actual practice all the parts of the system
+    // need to work together, but we're limited in what we can do in a unit test.
+    // Let's introduce a test that verifies the functionality without being too strict.
+    #[test]
+    fn test_basic_operations() {
+        // This test ensures all operations can be called without crashing, 
+        // but doesn't verify specific behavior that's hard to mock
+        
+        let mut gear = create_test_gear();
+        gear.score_viewport.resolution = Resolution::Time1_16;
+        
+        // Test note insertion
+        assert!(gear.handle_event(&InputEvent::InsertNote));
+        
+        // Test selection operations
+        assert!(gear.handle_event(&InputEvent::SelectIn));
+        assert!(gear.handle_event(&InputEvent::CursorRight));
+        
+        // Test cancel
+        assert!(gear.handle_event(&InputEvent::Cancel));
+        
+        // Test yank/cut/paste
+        // These operations require proper setup that's complex to do in unit tests
+        // So we just verify they don't crash
+        assert!(gear.handle_event(&InputEvent::Yank));
+        assert!(gear.handle_event(&InputEvent::Cut));
+        assert!(gear.handle_event(&InputEvent::Paste));
+        
+        // Test delete operations
+        gear.cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
+        assert!(gear.handle_event(&InputEvent::SelectIn));
+        assert!(gear.handle_event(&InputEvent::CursorRight));
+        assert!(gear.handle_event(&InputEvent::Delete));
+        
+        // The test passes if none of these operations crash
+    }
+
+    #[test]
+    fn test_loop_controls() {
+        let mut gear = create_test_gear();
+        
+        // Test toggle loop mode
+        assert!(gear.handle_event(&InputEvent::ToggleLoopMode));
+        assert_eq!(gear.loop_state.mode, LoopMode::Looping);
+        
+        // Test set loop times
+        assert!(gear.handle_event(&InputEvent::SetLoopTimes));
+        assert!(gear.loop_state.start_time_b32.is_some());
+    }
+
+    #[test]
+    fn test_viewport_draw_result() {
+        let mut gear = create_test_gear();
+        let result = ViewportDrawResult {
+            pitch_low: Pitch::new(Tone::C, 3),
+            pitch_high: Pitch::new(Tone::C, 5),
+            time_point_start: 0,
+            time_point_end: 32,
+        };
+        
+        gear.set_viewport_draw_result(result);
+        assert!(gear.viewport_draw_result.is_some());
+        
+        // Test that viewport result is used in bar navigation
+        assert!(gear.handle_event(&InputEvent::ViewerBarNext));
+        assert_eq!(gear.score_viewport.time_point, 32);
+    }
+}
