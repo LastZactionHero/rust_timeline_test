@@ -56,7 +56,21 @@ impl TrackEditorGear {
     }
 }
 
+// Add accessor methods to get cursor and viewport
+impl TrackEditorGear {
+    pub fn cursor(&self) -> Cursor {
+        self.cursor
+    }
+    
+    pub fn viewport(&self) -> ScoreViewport {
+        self.score_viewport
+    }
+}
+
 impl Gear for TrackEditorGear {
+    fn name(&self) -> &'static str {
+        "Track Editor"
+    }
     fn get_draw_component(&self) -> Box<dyn DrawComponent> {
         Box::new(BoxDrawComponent::new(Box::new(
             VSplitDrawComponent::new(
@@ -87,6 +101,14 @@ impl Gear for TrackEditorGear {
     
     fn set_viewport_draw_result(&mut self, result: ViewportDrawResult) {
         self.viewport_draw_result = Some(result);
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 
     fn handle_event(&mut self, event: &InputEvent) -> bool {
@@ -216,13 +238,35 @@ impl Gear for TrackEditorGear {
                 true
             }
             InputEvent::CursorLeft => {
+                // Move cursor to the left
                 self.cursor = self.cursor.left(self.score_viewport.resolution.duration_b32());
                 self.selection_buffer = self.selection_buffer.translate_to(self.cursor.time_point());
+                
+                // Check if cursor is near the edge of viewport and adjust if needed
+                if let Some(viewport_result) = self.viewport_draw_result {
+                    if self.cursor.time_point() <= viewport_result.time_point_start + 32 && self.score_viewport.time_point >= 32 {
+                        // Adjust viewport to follow cursor by moving one bar back
+                        self.score_viewport = self.score_viewport.set_time_point(
+                            self.score_viewport.time_point - 32
+                        );
+                    }
+                }
                 true
             }
             InputEvent::CursorRight => {
+                // Move cursor to the right
                 self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
                 self.selection_buffer = self.selection_buffer.translate_to(self.cursor.time_point());
+                
+                // Check if cursor is near the edge of viewport and adjust if needed
+                if let Some(viewport_result) = self.viewport_draw_result {
+                    if self.cursor.time_point() >= viewport_result.time_point_end - 32 {
+                        // Adjust viewport to follow cursor by moving one bar forward
+                        self.score_viewport = self.score_viewport.set_time_point(
+                            self.score_viewport.time_point + 32
+                        );
+                    }
+                }
                 true
             }
             
@@ -326,9 +370,6 @@ impl Gear for TrackEditorGear {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "Track Editor"
-    }
 }
 
 #[cfg(test)]

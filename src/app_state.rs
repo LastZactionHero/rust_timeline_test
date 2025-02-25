@@ -156,9 +156,15 @@ impl AppState {
                             }
                             
                             // If the gear handles the event, we need to sync up our app state with the gear's internal state
+                            // If an event was handled, we need to make sure the app state is consistent with the gear state
                             if event_handled {
-                                // In a more complete implementation, we would update the app state from the gear after handling the event
-                                // For now, we'll just acknowledge that the event was handled
+                                // Update app state with gear state when appropriate
+                                match &msg {
+                                    InputEvent::CursorRight | InputEvent::CursorLeft | InputEvent::CursorUp | InputEvent::CursorDown => {
+                                        // We'll handle this when we get the viewport draw result in the draw method
+                                    },
+                                    _ => {}
+                                }
                             }
                         }
                     }
@@ -183,6 +189,24 @@ impl AppState {
             stdout.execute(terminal::Clear(ClearType::All))?;
         }
 
+        // When we redraw, we need to sync the cursor from the gear to the app state
+        // This ensures that when cursor scrolls beyond the visible area, the app state cursor is updated
+        match self.active_gear_type {
+            GearType::TrackEditor => {
+                if let Some(track_editor) = self.active_gear.as_any().downcast_ref::<TrackEditorGear>() {
+                    self.cursor = track_editor.cursor();
+                    self.score_viewport = track_editor.viewport();
+                }
+            },
+            GearType::ScoreEditor => {
+                if let Some(score_editor) = self.active_gear.as_any().downcast_ref::<ScoreEditorGear>() {
+                    self.cursor = score_editor.cursor();
+                    self.score_viewport = score_editor.viewport();
+                }
+            },
+            _ => {},
+        }
+        
         // Get the active gear's draw component
         let gear_component = self.active_gear.get_draw_component();
         
@@ -214,12 +238,7 @@ impl AppState {
                         self.score_viewport = self.score_viewport.set_time_point(new_time);
                     }
                     
-                    if self.cursor.time_point() < viewport_draw_result.time_point_start
-                        || self.cursor.time_point() >= viewport_draw_result.time_point_end - 2
-                    {
-                        let new_time = self.cursor.time_point() - self.cursor.time_point() % 32;
-                        self.score_viewport = self.score_viewport.set_time_point(new_time);
-                    }
+                    // Cursor viewport adjustment is now handled in the gear implementations
                 }
             }
         }

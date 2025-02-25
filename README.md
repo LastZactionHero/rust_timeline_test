@@ -24,10 +24,9 @@
 - X Save file
 - X Load file
 - Promo
-- Multi-instrument
-- Score editing
+- X Multi-instrument
+- X Score editing
 - Undo
-- Bug: Cursor scrolling past screen is not moving the viewport
 
 ### MS 3: March
 
