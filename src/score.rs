@@ -259,11 +259,31 @@ impl Score {
 
         for (&onset_b32, notes_at_onset) in &other.notes {
             for note in notes_at_onset {
+                // Use insert to properly handle overlapping notes
                 merged_score.insert(note.pitch, onset_b32, note.duration_b32, note.instrument_id);
             }
         }
 
+        // Make sure to rebuild active_notes after the merge
+        merged_score.rebuild_active_notes();
+
         merged_score
+    }
+    
+    /// Rebuilds the active_notes collection from the base notes
+    pub fn rebuild_active_notes(&mut self) {
+        // Clear and rebuild active_notes
+        self.active_notes.clear();
+        
+        // Collect all notes from the score
+        let all_notes: Vec<Note> = self.notes.values()
+            .flat_map(|notes| notes.iter().cloned())
+            .collect();
+            
+        // Rebuild active_notes
+        for note in all_notes {
+            self.update_active_notes(note);
+        }
     }
 
     pub fn duration(&self) -> u64 {
@@ -385,19 +405,9 @@ impl Score {
             self.notes.insert(onset_b32, notes);
         }
 
-        // Collect all remaining notes first
-        let all_notes: Vec<Note> = self.notes.values()
-            .flat_map(|notes| notes.iter().cloned())
-            .collect();
-
-        debug!("Rebuilding active_notes with {} total notes", all_notes.len());
-
-        // Clear and rebuild active_notes
-        self.active_notes.clear();
-        for note in all_notes {
-            self.update_active_notes(note);
-        }
-
+        // Rebuild active_notes
+        self.rebuild_active_notes();
+        
         debug!("Finished rebuilding active_notes");
     }
 }

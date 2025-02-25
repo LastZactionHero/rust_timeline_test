@@ -87,7 +87,7 @@ impl ScoreDrawComponent {
 
     fn draw_score(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> ViewportDrawResult {
         let pitches = self.visible_pitches(pos);
-        let mut time_point = self.score_viewport.time_point;
+        let _time_point = self.score_viewport.time_point;
         debug!("Drawing score with {} visible pitches", pitches.len());
 
         // Draw the empty score.
@@ -138,25 +138,32 @@ impl ScoreDrawComponent {
 
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
-            let mut col_states: HashMap<(usize, Pitch), NoteState> = HashMap::new();
+            let mut col_states: HashMap<(usize, Pitch), (NoteState, u32)> = HashMap::new();
 
             for _ in 0..self.score_viewport.resolution.duration_b32() {
                 let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point, None);
 
                 for (row, pitch) in pitches.iter().enumerate() {
-                    if let Some(active_note) =
-                        active_notes.iter().find(|note| note.note.pitch == *pitch)
+                    if let Some(active_notes) = active_notes
+                        .iter()
+                        .filter(|note| note.note.pitch == *pitch)
+                        .collect::<Vec<_>>()
+                        .first()
                     {
+                        let active_note = *active_notes;
                         let current_state = col_states
                             .entry((row, *pitch))
-                            .or_insert(NoteState::Sustain);
+                            .or_insert((NoteState::Sustain, active_note.note.instrument_id));
+                        
                         match active_note.state {
                             NoteState::Onset | NoteState::Release => {
-                                *current_state = active_note.state
+                                current_state.0 = active_note.state;
+                                current_state.1 = active_note.note.instrument_id;
                             }
                             NoteState::Sustain => {
-                                if *current_state == NoteState::Sustain {
-                                    *current_state = NoteState::Sustain
+                                if current_state.0 == NoteState::Sustain {
+                                    current_state.0 = NoteState::Sustain;
+                                    current_state.1 = active_note.note.instrument_id;
                                 }
                             }
                         }
@@ -174,13 +181,9 @@ impl ScoreDrawComponent {
                         if let Some(active_note) = selected_notes_map.get(pitch) {
                             let current_state = col_states
                                 .entry((row, *pitch))
-                                .or_insert(NoteState::Sustain);
-                            *current_state = active_note.state;
-                            match active_note.state {
-                                NoteState::Onset => *current_state = NoteState::Onset,
-                                NoteState::Sustain => *current_state = NoteState::Sustain,
-                                NoteState::Release => *current_state = NoteState::Release,
-                            }
+                                .or_insert((NoteState::Sustain, active_note.note.instrument_id));
+                            current_state.0 = active_note.state;
+                            current_state.1 = active_note.note.instrument_id;
                         }
                     }
                 }
@@ -188,12 +191,30 @@ impl ScoreDrawComponent {
                 time_point += 1;
             }
 
-            for ((row, pitch), state) in col_states {
+            // Render the notes with instrument-specific characters
+            for ((row, _pitch), (state, instrument_id)) in col_states {
+                // Choose different characters for each instrument
+                let instrument_chars = [
+                    ('█', '░', '▒'), // Instrument 0 (solid blocks)
+                    ('◆', '◇', '◈'), // Instrument 1 (diamonds)
+                    ('●', '○', '◍'), // Instrument 2 (circles)
+                    ('▲', '△', '▴'), // Instrument 3 (triangles)
+                ];
+                
+                // Fallback to default characters if instrument ID is out of range
+                let (onset_char, sustain_char, release_char) = 
+                    if instrument_id < instrument_chars.len() as u32 {
+                        instrument_chars[instrument_id as usize]
+                    } else {
+                        ('X', 'x', '+') // Default fallback
+                    };
+                
                 let note_char = match state {
-                    NoteState::Onset => '█',
-                    NoteState::Sustain => '░',
-                    NoteState::Release => '▒',
+                    NoteState::Onset => onset_char,
+                    NoteState::Sustain => sustain_char,
+                    NoteState::Release => release_char,
                 };
+                
                 self.wb(buffer, pos, col, row, note_char);
             }
         }

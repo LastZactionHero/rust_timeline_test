@@ -3,22 +3,20 @@ use std::sync::{Arc, Mutex, mpsc};
 use crate::cursor::Cursor;
 use crate::cursor::CursorMode;
 use crate::draw_components::{DrawComponent, BoxDrawComponent, VSplitDrawComponent, NullComponent};
-use crate::draw_components::track_draw_component::TrackDrawComponent;
+use crate::draw_components::score_draw_component::ScoreDrawComponent;
 use crate::draw_components::status_bar_component::StatusBarComponent;
 use crate::draw_components::{self, DrawResult, ViewportDrawResult};
 use crate::events::InputEvent;
 use crate::loop_state::LoopState;
 use crate::player::Player;
-use crate::resolution::Resolution;
 use crate::score::Score;
 use crate::score_viewport::ScoreViewport;
 use crate::selection_buffer::SelectionBuffer;
 use crate::song_file::SongFile;
-use log::error;
 
 use super::Gear;
 
-pub struct TrackEditorGear {
+pub struct ScoreEditorGear {
     score: Arc<Mutex<Score>>,
     score_viewport: ScoreViewport,
     player: Arc<Mutex<Player>>,
@@ -28,10 +26,9 @@ pub struct TrackEditorGear {
     loop_state: LoopState,
     song_file: SongFile,
     viewport_draw_result: Option<ViewportDrawResult>,
-    instrument_id: u32,  // Instrument ID for this track editor
 }
 
-impl TrackEditorGear {
+impl ScoreEditorGear {
     pub fn new(
         score: Arc<Mutex<Score>>,
         score_viewport: ScoreViewport,
@@ -40,7 +37,6 @@ impl TrackEditorGear {
         cursor: Cursor,
         selection_buffer: SelectionBuffer,
         loop_state: LoopState,
-        instrument_id: u32,  // Add instrument ID parameter
     ) -> Self {
         Self {
             score,
@@ -52,17 +48,16 @@ impl TrackEditorGear {
             loop_state,
             song_file: SongFile::new(),
             viewport_draw_result: None,
-            instrument_id,  // Initialize the instrument ID
         }
     }
 }
 
-impl Gear for TrackEditorGear {
+impl Gear for ScoreEditorGear {
     fn get_draw_component(&self) -> Box<dyn DrawComponent> {
         Box::new(BoxDrawComponent::new(Box::new(
             VSplitDrawComponent::new(
                 draw_components::VSplitStyle::HalfWithDivider,
-                Box::new(TrackDrawComponent::new(
+                Box::new(ScoreDrawComponent::new(
                     Arc::clone(&self.score),
                     self.player.lock().unwrap().state(),
                     self.score_viewport,
@@ -70,7 +65,6 @@ impl Gear for TrackEditorGear {
                     self.cursor,
                     self.selection_buffer.clone(),
                     self.loop_state,
-                    self.instrument_id, // Pass the instrument ID to the TrackDrawComponent
                 )),
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,
@@ -79,7 +73,7 @@ impl Gear for TrackEditorGear {
                         self.cursor,
                         self.score_viewport,
                         self.loop_state,
-                        self.instrument_id, // Pass instrument_id to StatusBarComponent
+                        999, // Special value to indicate score editor (all instruments)
                     )),
                 )),
             ),
@@ -186,7 +180,7 @@ impl Gear for TrackEditorGear {
             // File operations
             InputEvent::SaveSong => {
                 if let Err(e) = self.song_file.save(&self.score.lock().unwrap()) {
-                    error!("Failed to save song: {}", e);
+                    log::error!("Failed to save song: {}", e);
                 }
                 true
             }
@@ -199,8 +193,8 @@ impl Gear for TrackEditorGear {
                     None => (),
                 }
                 let mut player = self.player.lock().unwrap();
-                // Pass the current instrument ID for the preview
-                player.set_current_instrument_id(self.instrument_id);
+                // Use instrument 0 for previewing in score editor
+                player.set_current_instrument_id(0);
                 player.preview_note(self.cursor.pitch());
                 true
             }
@@ -211,8 +205,8 @@ impl Gear for TrackEditorGear {
                     None => (),
                 }
                 let mut player = self.player.lock().unwrap();
-                // Pass the current instrument ID for the preview
-                player.set_current_instrument_id(self.instrument_id);
+                // Use instrument 0 for previewing in score editor
+                player.set_current_instrument_id(0);
                 player.preview_note(self.cursor.pitch());
                 true
             }
@@ -230,28 +224,63 @@ impl Gear for TrackEditorGear {
             // Note editing
             InputEvent::InsertNote => {
                 match self.cursor.mode() {
-                    CursorMode::Select(start, end) => {
+                    CursorMode::Select(_start, _end) => {
                         // Insert notes for the entire selection
                         let selection_range = self.cursor.selection_range().unwrap();
                         let pitch = self.cursor.pitch();
-                        let mut score_guard = self.score.lock().unwrap();
                         
                         // Calculate duration based on selection time points
+                        let time_point = selection_range.time_point_start_b32;
                         let duration = selection_range.time_point_end_b32 - selection_range.time_point_start_b32;
-                        score_guard.insert_or_remove(pitch, selection_range.time_point_start_b32, duration, self.instrument_id);
+                        
+                        // Check if a note exists at this position for any instrument
+                        let existing_notes = self.score.lock().unwrap().notes_starting_at_time(time_point, None)
+                            .into_iter()
+                            .filter(|note| note.pitch == pitch)
+                            .collect::<Vec<_>>();
+                        
+                        let mut score_guard = self.score.lock().unwrap();
+                        
+                        if existing_notes.is_empty() {
+                            // No existing note, insert a new one with instrument 0
+                            score_guard.insert(pitch, time_point, duration, 0);
+                        } else {
+                            // Note exists, remove all notes at this position with this pitch
+                            for note in existing_notes {
+                                // We need to actually remove the note
+                                score_guard.insert_or_remove(pitch, time_point, duration, note.instrument_id);
+                            }
+                        }
                         
                         // Move cursor to end of selection and clear selection mode
                         self.cursor = self.cursor.end_select();
                     }
                     _ => {
                         // Regular single note insertion
-                        self.score.lock().unwrap().insert_or_remove(
-                            self.cursor.pitch(),
-                            self.cursor.time_point(),
-                            self.score_viewport.resolution.duration_b32(),
-                            self.instrument_id,
-                        );
-                        self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
+                        let pitch = self.cursor.pitch();
+                        let time_point = self.cursor.time_point();
+                        let duration = self.score_viewport.resolution.duration_b32();
+                        
+                        // Check if a note exists at this position for any instrument
+                        let existing_notes = self.score.lock().unwrap().notes_starting_at_time(time_point, None)
+                            .into_iter()
+                            .filter(|note| note.pitch == pitch)
+                            .collect::<Vec<_>>();
+                        
+                        let mut score_guard = self.score.lock().unwrap();
+                        
+                        if existing_notes.is_empty() {
+                            // No existing note, insert a new one with instrument 0
+                            score_guard.insert(pitch, time_point, duration, 0);
+                        } else {
+                            // Note exists, remove all notes at this position with this pitch
+                            for note in existing_notes {
+                                // We need to actually remove the note
+                                score_guard.insert_or_remove(pitch, time_point, duration, note.instrument_id);
+                            }
+                        }
+                        
+                        self.cursor = self.cursor.right(duration);
                     }
                 }
                 true
@@ -265,7 +294,7 @@ impl Gear for TrackEditorGear {
             InputEvent::Yank => {
                 if let CursorMode::Select(_, _) = self.cursor.mode() {
                     let selection_range = self.cursor.selection_range().unwrap();
-                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range, Some(self.instrument_id));
+                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range, None); // No instrument filter
                     self.cursor = self.cursor.yank().right(self.score_viewport.resolution.duration_b32());
                     self.selection_buffer = SelectionBuffer::Score(
                         selection_score.translate(Some(self.cursor.time_point())),
@@ -276,8 +305,8 @@ impl Gear for TrackEditorGear {
             InputEvent::Cut => {
                 if let CursorMode::Select(_, _) = self.cursor.mode() {
                     let selection_range = self.cursor.selection_range().unwrap();
-                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range, Some(self.instrument_id));
-                    self.score.lock().unwrap().delete_in_selection(selection_range, Some(self.instrument_id));
+                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range, None); // No instrument filter
+                    self.score.lock().unwrap().delete_in_selection(selection_range, None); // No instrument filter
                     self.cursor = self.cursor.end_select();
                     self.selection_buffer = SelectionBuffer::Score(
                         selection_score.translate(Some(self.cursor.time_point())),
@@ -292,11 +321,8 @@ impl Gear for TrackEditorGear {
                     // Don't replace the entire score, instead merge notes one by one
                     for (&onset_b32, notes_at_onset) in &selection_buffer_score.notes {
                         for note in notes_at_onset {
-                            // Only insert notes matching the current instrument_id
-                            if note.instrument_id == self.instrument_id {
-                                // Use insert to properly handle note merging
-                                score_guard.insert(note.pitch, onset_b32, note.duration_b32, note.instrument_id);
-                            }
+                            // Use insert instead of insert_or_remove to avoid toggling existing notes
+                            score_guard.insert(note.pitch, onset_b32, note.duration_b32, note.instrument_id);
                         }
                     }
                     
@@ -314,7 +340,7 @@ impl Gear for TrackEditorGear {
             }
             InputEvent::Delete => {
                 if let Some(selection_range) = self.cursor.selection_range() {
-                    self.score.lock().unwrap().delete_in_selection(selection_range, Some(self.instrument_id));
+                    self.score.lock().unwrap().delete_in_selection(selection_range, None); // No instrument filter
                     self.cursor = self.cursor.end_select();
                 }
                 true
@@ -328,6 +354,6 @@ impl Gear for TrackEditorGear {
     }
 
     fn name(&self) -> &'static str {
-        "Track Editor"
+        "Score Editor"
     }
 }

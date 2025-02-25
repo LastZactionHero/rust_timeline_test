@@ -1,9 +1,11 @@
-mod track_editor;  // New module for track editing
+mod track_editor;  // Module for track editing
+mod score_editor;  // Module for score editing (all instruments)
 
 use crate::draw_components::{DrawComponent, DrawResult, Position, ViewportDrawResult};
 use crate::events::InputEvent;
 
-pub use track_editor::TrackEditorGear;  // Export the new track editor gear
+pub use track_editor::TrackEditorGear;  // Export the track editor gear
+pub use score_editor::ScoreEditorGear;  // Export the score editor gear
 
 /// Trait that defines the interface for all gear types
 pub trait Gear {
@@ -21,9 +23,10 @@ pub trait Gear {
 }
 
 /// Enum to represent the different types of gear available in the application
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum GearType {
-    TrackEditor,    // Renamed from ScoreEditor
-    Mixer,
+    TrackEditor,    // Single instrument track editor
+    ScoreEditor,    // Multi-instrument score editor
+    Mixer,          // (Future) Mixer
     // Add more gear types as needed
 }

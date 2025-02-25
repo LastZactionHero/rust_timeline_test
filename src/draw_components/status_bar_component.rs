@@ -28,9 +28,16 @@ impl DrawComponent for StatusBarComponent {
             }
         };
 
+        let mode_str = if self.instrument_id == 999 {
+            // For Score Editor, add a legend showing instrument symbols
+            "[Mode: Score Editor] [Instruments: 0:█ 1:◆ 2:● 3:▲]".to_string()
+        } else {
+            format!("[Instrument: {}]", self.instrument_id)
+        };
+        
         let status_str = format!(
-            "{} [Instrument: {}] [Cursor: {}] [Score Viewport: {}]",
-            loop_str, self.instrument_id, self.cursor, self.score_viewport
+            "{} {} [Cursor: {}] [Score Viewport: {}]",
+            loop_str, mode_str, self.cursor, self.score_viewport
         );
         self.wb_string(buffer, pos, 0, 0, status_str);
         vec![]

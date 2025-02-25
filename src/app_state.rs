@@ -2,7 +2,7 @@
 use crate::audio::audio_player;
 use crate::cursor::Cursor;
 use crate::draw_components::ViewportDrawResult;
-use crate::gear::{Gear, GearType, TrackEditorGear};
+use crate::gear::{Gear, GearType, TrackEditorGear, ScoreEditorGear};
 use crate::loop_state::LoopState;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
@@ -145,6 +145,17 @@ impl AppState {
                             // If the active gear doesn't handle the event, the score editor gear will handle it
                             let event_handled = self.active_gear.handle_event(&msg);
                             
+                            // For specific events that modify the score, ensure we rebuild active_notes
+                            if event_handled {
+                                match &msg {
+                                    InputEvent::Paste | InputEvent::Cut | InputEvent::Delete | InputEvent::InsertNote => {
+                                        // Ensure the active_notes are up to date
+                                        self.score.lock().unwrap().rebuild_active_notes();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            
                             // If the gear handles the event, we need to sync up our app state with the gear's internal state
                             if event_handled {
                                 // In a more complete implementation, we would update the app state from the gear after handling the event
@@ -248,6 +259,25 @@ impl AppState {
                 );
                 self.active_gear = Box::new(track_editor);
                 self.active_gear_type = GearType::TrackEditor;
+                
+                // After switching, update the selection buffer from the gear
+                self.update_selection_buffer_from_gear();
+            }
+            GearType::ScoreEditor => {
+                let score_editor = ScoreEditorGear::new(
+                    Arc::clone(&self.score),
+                    self.score_viewport,
+                    Arc::clone(&self.player),
+                    self.input_tx.clone(),
+                    self.cursor,
+                    self.selection_buffer.clone(),
+                    self.loop_state,
+                );
+                self.active_gear = Box::new(score_editor);
+                self.active_gear_type = GearType::ScoreEditor;
+                
+                // After switching, update the selection buffer from the gear
+                self.update_selection_buffer_from_gear();
             }
             GearType::Mixer => {
                 // In the future, implement Mixer gear
@@ -257,24 +287,81 @@ impl AppState {
         }
     }
     
-    /// Switch to the next instrument (cycling through 0-3)
+    /// Helper method to update the AppState's selection buffer from the active gear
+    fn update_selection_buffer_from_gear(&mut self) {
+        // For now, we just need to make sure we rebuild active_notes
+        // We could extend this in the future to sync more state between gear and app
+        self.score.lock().unwrap().rebuild_active_notes();
+    }
+    
+    /// Switch to the next instrument or score editor (cycling through instruments 0-3, then score editor)
     pub fn switch_instrument(&mut self) {
-        // Cycle through instruments 0-3
-        self.current_instrument_id = (self.current_instrument_id + 1) % 4;
-        
-        // Create a new TrackEditorGear with the updated instrument ID
-        let track_editor = TrackEditorGear::new(
-            Arc::clone(&self.score),
-            self.score_viewport,
-            Arc::clone(&self.player),
-            self.input_tx.clone(),
-            self.cursor,
-            self.selection_buffer.clone(),
-            self.loop_state,
-            self.current_instrument_id,
-        );
-        
-        // Update the active gear
-        self.active_gear = Box::new(track_editor);
+        // Cycle through instruments 0-3, then switch to score editor
+        if self.active_gear_type == GearType::ScoreEditor {
+            // If we're in the score editor, go back to instrument 0
+            self.current_instrument_id = 0;
+            self.active_gear_type = GearType::TrackEditor;
+            
+            // Create a new TrackEditorGear
+            let track_editor = TrackEditorGear::new(
+                Arc::clone(&self.score),
+                self.score_viewport,
+                Arc::clone(&self.player),
+                self.input_tx.clone(),
+                self.cursor,
+                self.selection_buffer.clone(),
+                self.loop_state,
+                self.current_instrument_id,
+            );
+            
+            // Update the active gear
+            self.active_gear = Box::new(track_editor);
+            
+            // After switching, update the selection buffer from the gear
+            self.update_selection_buffer_from_gear();
+        } else {
+            // We're in track editor mode
+            self.current_instrument_id = (self.current_instrument_id + 1) % 4;
+            
+            if self.current_instrument_id == 0 {
+                // After cycling through all instruments, switch to score editor
+                self.active_gear_type = GearType::ScoreEditor;
+                
+                // Create a new ScoreEditorGear
+                let score_editor = ScoreEditorGear::new(
+                    Arc::clone(&self.score),
+                    self.score_viewport,
+                    Arc::clone(&self.player),
+                    self.input_tx.clone(),
+                    self.cursor,
+                    self.selection_buffer.clone(),
+                    self.loop_state,
+                );
+                
+                // Update the active gear
+                self.active_gear = Box::new(score_editor);
+                
+                // After switching, update the selection buffer from the gear
+                self.update_selection_buffer_from_gear();
+            } else {
+                // Switch to next instrument track
+                let track_editor = TrackEditorGear::new(
+                    Arc::clone(&self.score),
+                    self.score_viewport,
+                    Arc::clone(&self.player),
+                    self.input_tx.clone(),
+                    self.cursor,
+                    self.selection_buffer.clone(),
+                    self.loop_state,
+                    self.current_instrument_id,
+                );
+                
+                // Update the active gear
+                self.active_gear = Box::new(track_editor);
+                
+                // After switching, update the selection buffer from the gear
+                self.update_selection_buffer_from_gear();
+            }
+        }
     }
 }
