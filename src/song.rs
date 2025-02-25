@@ -58,7 +58,8 @@ pub fn create_song() -> Score {
                         score.insert_or_remove(
                             Pitch::new(tone, octave as u16),
                             onset,
-                            duration
+                            duration,
+                            0  // Default instrument ID
                         );
                     }
                 }

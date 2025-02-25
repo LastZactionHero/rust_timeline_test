@@ -95,7 +95,7 @@ impl Player {
             .score
             .lock()
             .unwrap()
-            .notes_starting_at_time(self.time_b32);
+            .notes_starting_at_time(self.time_b32, None);
 
         // Remove finished notes and add new ones
         self.active_notes
@@ -130,6 +130,7 @@ impl Player {
             pitch,
             onset_b32: 0,
             duration_b32: 16,
+            instrument_id: 0, // Default instrument ID
         });
         self.preview_start = Some(Instant::now());
     }

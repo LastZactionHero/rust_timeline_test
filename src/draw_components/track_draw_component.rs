@@ -21,6 +21,7 @@ pub struct TrackDrawComponent {
     cursor: Cursor,
     selection_buffer: SelectionBuffer,
     loop_state: LoopState,
+    instrument_id: u32,  // Add instrument ID to the component
 }
 
 impl DrawComponent for TrackDrawComponent {
@@ -53,6 +54,7 @@ impl TrackDrawComponent {
         cursor: Cursor,
         selection_buffer: SelectionBuffer,
         loop_state: LoopState,
+        instrument_id: u32,  // Add instrument ID parameter
     ) -> TrackDrawComponent {
         TrackDrawComponent {
             score,
@@ -62,6 +64,7 @@ impl TrackDrawComponent {
             cursor,
             selection_buffer,
             loop_state,
+            instrument_id,  // Initialize the instrument ID
         }
     }
     
@@ -157,7 +160,8 @@ impl TrackDrawComponent {
             let mut col_states: HashMap<(usize, Pitch), NoteState> = HashMap::new();
 
             for _ in 0..self.score_viewport.resolution.duration_b32() {
-                let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point);
+                // Use instrument_id when querying for active notes
+                let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point, Some(self.instrument_id));
 
                 for (row, pitch) in pitches.iter().enumerate() {
                     if let Some(active_note) =
@@ -180,7 +184,8 @@ impl TrackDrawComponent {
                 }
 
                 if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
-                    let selected_notes = selection_buffer_score.notes_active_at_time(time_point);
+                    // Filter selection buffer notes by instrument_id as well
+                    let selected_notes = selection_buffer_score.notes_active_at_time(time_point, Some(self.instrument_id));
                     let selected_notes_map: HashMap<Pitch, ActiveNote> = selected_notes
                         .into_iter()
                         .map(|active_note| (active_note.note.pitch, active_note))

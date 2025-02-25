@@ -28,6 +28,7 @@ pub struct TrackEditorGear {
     loop_state: LoopState,
     song_file: SongFile,
     viewport_draw_result: Option<ViewportDrawResult>,
+    instrument_id: u32,  // Instrument ID for this track editor
 }
 
 impl TrackEditorGear {
@@ -39,6 +40,7 @@ impl TrackEditorGear {
         cursor: Cursor,
         selection_buffer: SelectionBuffer,
         loop_state: LoopState,
+        instrument_id: u32,  // Add instrument ID parameter
     ) -> Self {
         Self {
             score,
@@ -50,6 +52,7 @@ impl TrackEditorGear {
             loop_state,
             song_file: SongFile::new(),
             viewport_draw_result: None,
+            instrument_id,  // Initialize the instrument ID
         }
     }
 }
@@ -67,6 +70,7 @@ impl Gear for TrackEditorGear {
                     self.cursor,
                     self.selection_buffer.clone(),
                     self.loop_state,
+                    self.instrument_id, // Pass the instrument ID to the TrackDrawComponent
                 )),
                 Box::new(VSplitDrawComponent::new(
                     draw_components::VSplitStyle::StatusBarNoDivider,
@@ -227,7 +231,7 @@ impl Gear for TrackEditorGear {
                         
                         // Calculate duration based on selection time points
                         let duration = selection_range.time_point_end_b32 - selection_range.time_point_start_b32;
-                        score_guard.insert_or_remove(pitch, selection_range.time_point_start_b32, duration);
+                        score_guard.insert_or_remove(pitch, selection_range.time_point_start_b32, duration, self.instrument_id);
                         
                         // Move cursor to end of selection and clear selection mode
                         self.cursor = self.cursor.end_select();
@@ -238,6 +242,7 @@ impl Gear for TrackEditorGear {
                             self.cursor.pitch(),
                             self.cursor.time_point(),
                             self.score_viewport.resolution.duration_b32(),
+                            self.instrument_id,
                         );
                         self.cursor = self.cursor.right(self.score_viewport.resolution.duration_b32());
                     }
@@ -253,7 +258,7 @@ impl Gear for TrackEditorGear {
             InputEvent::Yank => {
                 if let CursorMode::Select(_, _) = self.cursor.mode() {
                     let selection_range = self.cursor.selection_range().unwrap();
-                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range);
+                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range, Some(self.instrument_id));
                     self.cursor = self.cursor.yank().right(self.score_viewport.resolution.duration_b32());
                     self.selection_buffer = SelectionBuffer::Score(
                         selection_score.translate(Some(self.cursor.time_point())),
@@ -264,8 +269,8 @@ impl Gear for TrackEditorGear {
             InputEvent::Cut => {
                 if let CursorMode::Select(_, _) = self.cursor.mode() {
                     let selection_range = self.cursor.selection_range().unwrap();
-                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range);
-                    self.score.lock().unwrap().delete_in_selection(selection_range);
+                    let selection_score = self.score.lock().unwrap().clone_at_selection(selection_range, Some(self.instrument_id));
+                    self.score.lock().unwrap().delete_in_selection(selection_range, Some(self.instrument_id));
                     self.cursor = self.cursor.end_select();
                     self.selection_buffer = SelectionBuffer::Score(
                         selection_score.translate(Some(self.cursor.time_point())),
@@ -287,7 +292,7 @@ impl Gear for TrackEditorGear {
             }
             InputEvent::Delete => {
                 if let Some(selection_range) = self.cursor.selection_range() {
-                    self.score.lock().unwrap().delete_in_selection(selection_range);
+                    self.score.lock().unwrap().delete_in_selection(selection_range, Some(self.instrument_id));
                     self.cursor = self.cursor.end_select();
                 }
                 true

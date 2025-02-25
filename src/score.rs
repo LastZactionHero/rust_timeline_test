@@ -14,6 +14,7 @@ pub struct Note {
     pub pitch: Pitch,
     pub onset_b32: u64,
     pub duration_b32: u64,
+    pub instrument_id: u32,  // Added instrument_id field with u32 type
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,13 +38,18 @@ pub struct Score {
 }
 
 impl Score {
-    pub fn notes_starting_at_time(&self, onset_b32: u64) -> Vec<Note> {
-        self.notes
-            .get(&onset_b32)
-            .unwrap_or(&vec![])
-            .iter()
-            .map(|note| note.clone())
-            .collect()
+    /// Get notes starting at a specific time, optionally filtered by instrument ID
+    pub fn notes_starting_at_time(&self, onset_b32: u64, instrument_id: Option<u32>) -> Vec<Note> {
+        let empty_vec: Vec<Note> = Vec::new();
+        let notes = self.notes.get(&onset_b32).unwrap_or(&empty_vec);
+        
+        match instrument_id {
+            Some(id) => notes.iter()
+                .filter(|note| note.instrument_id == id)
+                .cloned()
+                .collect(),
+            None => notes.iter().cloned().collect()
+        }
     }
 
     pub fn time_within_song(&self, time_point_b32: u64) -> bool {
@@ -59,24 +65,35 @@ impl Score {
         last_time_point_in_song > time_point_b32
     }
 
-    pub fn insert_or_remove(&mut self, pitch: Pitch, onset_b32: u64, duration_b32: u64) {
-        let mut notes_starting_at_time = self.notes_starting_at_time(onset_b32);
+    pub fn insert_or_remove(&mut self, pitch: Pitch, onset_b32: u64, duration_b32: u64, instrument_id: u32) {
+        let mut notes_starting_at_time = self.notes_starting_at_time(onset_b32, Some(instrument_id));
 
         let mut note_found_at_index = None;
         for (index, note) in notes_starting_at_time.iter().enumerate() {
-            if note.pitch == pitch {
+            if note.pitch == pitch && note.instrument_id == instrument_id {
                 note_found_at_index = Some(index);
             }
         }
+        
         if let Some(matching_note_index) = note_found_at_index {
             let removed_note = notes_starting_at_time[matching_note_index];
+            
+            // Remove from active notes
             for t in removed_note.onset_b32..=removed_note.onset_b32 + removed_note.duration_b32 {
                 if let Some(notes) = self.active_notes.get_mut(&t) {
-                    notes.retain(|active| active.note.pitch != pitch);
+                    notes.retain(|active| !(active.note.pitch == pitch && active.note.instrument_id == instrument_id));
                 }
             }
-            notes_starting_at_time.remove(matching_note_index);
-            self.notes.insert(onset_b32, notes_starting_at_time);
+            
+            // Remove from notes starting at this time
+            let mut all_notes_at_time = self.notes_starting_at_time(onset_b32, None);
+            all_notes_at_time.retain(|note| !(note.pitch == pitch && note.instrument_id == instrument_id));
+            
+            if all_notes_at_time.is_empty() {
+                self.notes.remove(&onset_b32);
+            } else {
+                self.notes.insert(onset_b32, all_notes_at_time);
+            }
             return;
         }
 
@@ -84,6 +101,7 @@ impl Score {
             pitch,
             onset_b32,
             duration_b32,
+            instrument_id,
         };
 
         match self.notes.get_mut(&onset_b32) {
@@ -98,8 +116,9 @@ impl Score {
         self.update_active_notes(note_to_insert);
     }
 
-    // Creates a new Score with just notes between selection times and pitches.
-    pub fn clone_at_selection(&self, selection_range: SelectionRange) -> Score {
+    /// Creates a new Score with just notes between selection times and pitches.
+    /// Optionally filters by instrument_id
+    pub fn clone_at_selection(&self, selection_range: SelectionRange, instrument_id: Option<u32>) -> Score {
         let mut new_score = Score {
             bpm: self.bpm,
             notes: HashMap::new(),
@@ -109,9 +128,11 @@ impl Score {
         for (&onset_b32, notes_at_onset) in &self.notes {
             if onset_b32 >= selection_range.time_point_start_b32 && onset_b32 < selection_range.time_point_end_b32 {
                 for note in notes_at_onset {
-                    if note.pitch >= selection_range.pitch_low && note.pitch <= selection_range.pitch_high {
+                    // Check if note is within pitch range and (if specified) belongs to the right instrument
+                    if note.pitch >= selection_range.pitch_low && note.pitch <= selection_range.pitch_high && 
+                       (instrument_id.is_none() || instrument_id == Some(note.instrument_id)) {
                         // Assuming Pitch implements PartialOrd
-                        new_score.insert_or_remove(note.pitch, note.onset_b32, note.duration_b32);
+                        new_score.insert_or_remove(note.pitch, note.onset_b32, note.duration_b32, note.instrument_id);
                     }
                 }
             }
@@ -153,7 +174,7 @@ impl Score {
                     };
 
                     for note in notes_at_onset {
-                        new_score.insert_or_remove(note.pitch, new_onset, note.duration_b32);
+                        new_score.insert_or_remove(note.pitch, new_onset, note.duration_b32, note.instrument_id);
                     }
                 }
 
@@ -163,14 +184,14 @@ impl Score {
         }
     }
 
-    pub fn insert(&mut self, pitch: Pitch, onset_b32: u64, duration_b32: u64) {
+    pub fn insert(&mut self, pitch: Pitch, onset_b32: u64, duration_b32: u64, instrument_id: u32) {
         let end_b32 = onset_b32 + duration_b32;
         let mut overlapping_notes: Vec<(u64, Note)> = Vec::new();
 
-        // Find all overlapping notes with the same pitch
+        // Find all overlapping notes with the same pitch and instrument ID
         for (&existing_onset, notes) in &self.notes {
             for note in notes {
-                if note.pitch == pitch {
+                if note.pitch == pitch && note.instrument_id == instrument_id {
                     let existing_end = note.onset_b32 + note.duration_b32;
                     // Check if notes strictly overlap (not just adjacent)
                     if !(existing_end <= onset_b32 || note.onset_b32 >= end_b32) {
@@ -183,7 +204,7 @@ impl Score {
         // Remove all overlapping notes
         for (onset, note) in &overlapping_notes {
             if let Some(notes) = self.notes.get_mut(onset) {
-                notes.retain(|n| n.pitch != note.pitch);
+                notes.retain(|n| !(n.pitch == note.pitch && n.instrument_id == note.instrument_id));
                 if notes.is_empty() {
                     self.notes.remove(onset);
                 }
@@ -218,6 +239,7 @@ impl Score {
             pitch,
             onset_b32: merged_onset,
             duration_b32: merged_end - merged_onset,
+            instrument_id,
         };
 
         match self.notes.get_mut(&merged_onset) {
@@ -237,7 +259,7 @@ impl Score {
 
         for (&onset_b32, notes_at_onset) in &other.notes {
             for note in notes_at_onset {
-                merged_score.insert(note.pitch, onset_b32, note.duration_b32);
+                merged_score.insert(note.pitch, onset_b32, note.duration_b32, note.instrument_id);
             }
         }
 
@@ -301,19 +323,25 @@ impl Score {
         }
     }
 
-    // New method to get active notes at a specific time
-    pub fn notes_active_at_time(&self, time_point_b32: u64) -> Vec<ActiveNote> {
-        let result = self.active_notes
+    /// Get active notes at a specific time, optionally filtered by instrument ID
+    pub fn notes_active_at_time(&self, time_point_b32: u64, instrument_id: Option<u32>) -> Vec<ActiveNote> {
+        let active_notes = self.active_notes
             .get(&time_point_b32)
             .cloned()
             .unwrap_or_default();
-        result
+            
+        match instrument_id {
+            Some(id) => active_notes.into_iter()
+                .filter(|active_note| active_note.note.instrument_id == id)
+                .collect(),
+            None => active_notes
+        }
     }
 
-    pub fn delete_in_selection(&mut self, selection_range: SelectionRange) {
-        debug!("Deleting notes between {} and {} with pitch range {:?} to {:?}", 
+    pub fn delete_in_selection(&mut self, selection_range: SelectionRange, instrument_id: Option<u32>) {
+        debug!("Deleting notes between {} and {} with pitch range {:?} to {:?}, instrument_id: {:?}", 
             selection_range.time_point_start_b32, selection_range.time_point_end_b32, 
-            selection_range.pitch_low, selection_range.pitch_high);
+            selection_range.pitch_low, selection_range.pitch_high, instrument_id);
 
         let mut onsets_to_remove: Vec<u64> = Vec::new();
         let mut notes_to_keep: HashMap<u64, Vec<Note>> = HashMap::new();
@@ -324,7 +352,14 @@ impl Score {
                 let (keep, remove): (Vec<Note>, Vec<Note>) = notes_at_onset
                     .iter()
                     .cloned()
-                    .partition(|note| note.pitch < selection_range.pitch_low || note.pitch > selection_range.pitch_high);
+                    .partition(|note| {
+                        // Keep note if:
+                        // 1. It's outside the pitch range OR
+                        // 2. We're filtering by instrument_id and this note is for a different instrument
+                        note.pitch < selection_range.pitch_low || 
+                        note.pitch > selection_range.pitch_high || 
+                        (instrument_id.is_some() && note.instrument_id != instrument_id.unwrap())
+                    });
 
                 debug!("At onset {}: keeping {} notes, removing {} notes", 
                     onset_b32, keep.len(), remove.len());
@@ -379,9 +414,9 @@ mod tests {
             active_notes: HashMap::new(),
         };
         // Add some test notes
-        score.insert(Pitch::new(Tone::C, 4), 0, 32); // C4 (MIDI 60)
-        score.insert(Pitch::new(Tone::E, 4), 32, 32); // E4 (MIDI 64)
-        score.insert(Pitch::new(Tone::G, 4), 64, 32); // G4 (MIDI 67)
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 0); // C4 (MIDI 60), instrument 0
+        score.insert(Pitch::new(Tone::E, 4), 32, 32, 0); // E4 (MIDI 64), instrument 0
+        score.insert(Pitch::new(Tone::G, 4), 64, 32, 0); // G4 (MIDI 67), instrument 0
         score
     }
 
@@ -389,11 +424,23 @@ mod tests {
     fn test_notes_starting_at_time() {
         let score = create_test_score();
 
-        let notes = score.notes_starting_at_time(0);
+        // Test without filtering by instrument
+        let notes = score.notes_starting_at_time(0, None);
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].pitch, Pitch::new(Tone::C, 4));
+        assert_eq!(notes[0].instrument_id, 0);
 
-        let empty_notes = score.notes_starting_at_time(16);
+        // Test filtering by instrument 0
+        let notes_inst0 = score.notes_starting_at_time(0, Some(0));
+        assert_eq!(notes_inst0.len(), 1);
+        assert_eq!(notes_inst0[0].instrument_id, 0);
+
+        // Test filtering by non-existent instrument
+        let notes_inst1 = score.notes_starting_at_time(0, Some(1));
+        assert!(notes_inst1.is_empty());
+
+        // Test time point with no notes
+        let empty_notes = score.notes_starting_at_time(16, None);
         assert!(empty_notes.is_empty());
     }
 
@@ -417,12 +464,30 @@ mod tests {
         };
 
         // Test insertion
-        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
-        assert_eq!(score.notes_starting_at_time(0).len(), 1);
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
+        assert_eq!(score.notes_starting_at_time(0, None).len(), 1);
 
         // Test removal
-        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
-        assert_eq!(score.notes_starting_at_time(0).len(), 0);
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
+        assert_eq!(score.notes_starting_at_time(0, None).len(), 0);
+        
+        // Test insertion with different instrument IDs
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 1);
+        
+        // Should have 2 notes total
+        assert_eq!(score.notes_starting_at_time(0, None).len(), 2);
+        
+        // Should have 1 note for instrument 0
+        assert_eq!(score.notes_starting_at_time(0, Some(0)).len(), 1);
+        
+        // Should have 1 note for instrument 1
+        assert_eq!(score.notes_starting_at_time(0, Some(1)).len(), 1);
+        
+        // Removing note for instrument 0 shouldn't affect instrument 1
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
+        assert_eq!(score.notes_starting_at_time(0, None).len(), 1);
+        assert_eq!(score.notes_starting_at_time(0, Some(1)).len(), 1);
     }
 
     #[test]
@@ -436,11 +501,26 @@ mod tests {
             pitch_high: Pitch::new(Tone::E, 4),
         };
 
-        let selected = score.clone_at_selection(selection_range);
+        // Clone without filtering by instrument
+        let selected = score.clone_at_selection(selection_range, None);
 
-        assert_eq!(selected.notes_starting_at_time(0).len(), 1);
-        assert_eq!(selected.notes_starting_at_time(32).len(), 1);
-        assert_eq!(selected.notes_starting_at_time(64).len(), 0); // G4 is outside pitch range
+        assert_eq!(selected.notes_starting_at_time(0, None).len(), 1);
+        assert_eq!(selected.notes_starting_at_time(32, None).len(), 1);
+        assert_eq!(selected.notes_starting_at_time(64, None).len(), 0); // G4 is outside pitch range
+        
+        // Add note with a different instrument ID
+        let mut score2 = score.clone();
+        score2.insert_or_remove(Pitch::new(Tone::D, 4), 16, 32, 1);  // D4, instrument 1
+        
+        // Clone filtering by instrument 0
+        let selected_inst0 = score2.clone_at_selection(selection_range, Some(0));
+        assert_eq!(selected_inst0.notes_starting_at_time(0, None).len(), 1);   // C4 from instrument 0
+        assert_eq!(selected_inst0.notes_starting_at_time(16, None).len(), 0);  // No D4 from instrument 1
+        
+        // Clone filtering by instrument 1
+        let selected_inst1 = score2.clone_at_selection(selection_range, Some(1));
+        assert_eq!(selected_inst1.notes_starting_at_time(0, None).len(), 0);   // No C4 from instrument 0
+        assert_eq!(selected_inst1.notes_starting_at_time(16, None).len(), 1);  // D4 from instrument 1
     }
 
     #[test]
@@ -449,15 +529,29 @@ mod tests {
 
         // Test translation to later time
         let translated = score.translate(Some(32));
-        assert!(translated.notes_starting_at_time(0).is_empty());
+        assert!(translated.notes_starting_at_time(0, None).is_empty());
         assert_eq!(
-            translated.notes_starting_at_time(32)[0].pitch,
+            translated.notes_starting_at_time(32, None)[0].pitch,
             Pitch::new(Tone::C, 4)
         );
 
         // Test translation with None
         let no_translation = score.translate(None);
-        assert_eq!(no_translation.notes_starting_at_time(0).len(), 1);
+        assert_eq!(no_translation.notes_starting_at_time(0, None).len(), 1);
+        
+        // Test translation preserves instrument IDs
+        let mut multi_inst_score = Score { 
+            bpm: 120, 
+            notes: HashMap::new(), 
+            active_notes: HashMap::new()
+        };
+        multi_inst_score.insert(Pitch::new(Tone::C, 4), 0, 32, 0);
+        multi_inst_score.insert(Pitch::new(Tone::C, 4), 0, 32, 1);
+        
+        let translated_multi = multi_inst_score.translate(Some(32));
+        assert_eq!(translated_multi.notes_starting_at_time(32, None).len(), 2);
+        assert_eq!(translated_multi.notes_starting_at_time(32, Some(0)).len(), 1);
+        assert_eq!(translated_multi.notes_starting_at_time(32, Some(1)).len(), 1);
     }
 
     #[test]
@@ -469,14 +563,30 @@ mod tests {
         };
 
         // Test basic insertion
-        score.insert(Pitch::new(Tone::C, 4), 0, 32);
-        assert_eq!(score.notes_starting_at_time(0).len(), 1);
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 0);
+        assert_eq!(score.notes_starting_at_time(0, None).len(), 1);
 
-        // Test overlapping notes merge
-        score.insert(Pitch::new(Tone::C, 4), 16, 32);
-        let notes = score.notes_starting_at_time(0);
+        // Test overlapping notes merge within same instrument
+        score.insert(Pitch::new(Tone::C, 4), 16, 32, 0);
+        let notes = score.notes_starting_at_time(0, None);
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].duration_b32, 48); // Notes should merge
+        
+        // Test notes with different instrument IDs don't merge
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 1);
+        let all_notes = score.notes_starting_at_time(0, None);
+        assert_eq!(all_notes.len(), 2); // Should have 2 notes (one for each instrument)
+        
+        // Test merging only happens within instrument
+        score.insert(Pitch::new(Tone::C, 4), 16, 32, 1);
+        let inst1_notes = score.notes_starting_at_time(0, Some(1));
+        assert_eq!(inst1_notes.len(), 1);
+        assert_eq!(inst1_notes[0].duration_b32, 48); // Instrument 1 notes should merge
+        
+        // Instrument 0 note should remain unchanged
+        let inst0_notes = score.notes_starting_at_time(0, Some(0));
+        assert_eq!(inst0_notes.len(), 1);
+        assert_eq!(inst0_notes[0].duration_b32, 48);
     }
 
     #[test]
@@ -486,17 +596,30 @@ mod tests {
             notes: HashMap::new(),
             active_notes: HashMap::new(),
         };
-        score1.insert(Pitch::new(Tone::C, 4), 0, 32);
+        score1.insert(Pitch::new(Tone::C, 4), 0, 32, 0);
 
         let mut score2 = Score {
             bpm: 120,
             notes: HashMap::new(),
             active_notes: HashMap::new(),
         };
-        score2.insert(Pitch::new(Tone::E, 4), 0, 32);
+        score2.insert(Pitch::new(Tone::E, 4), 0, 32, 0);
 
         let merged = score1.merge_down(&score2);
-        assert_eq!(merged.notes_starting_at_time(0).len(), 2);
+        assert_eq!(merged.notes_starting_at_time(0, None).len(), 2);
+        
+        // Test merging across instruments
+        let mut score3 = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        };
+        score3.insert(Pitch::new(Tone::G, 4), 0, 32, 1);  // Different instrument
+        
+        let merged2 = merged.merge_down(&score3);
+        assert_eq!(merged2.notes_starting_at_time(0, None).len(), 3);
+        assert_eq!(merged2.notes_starting_at_time(0, Some(0)).len(), 2);
+        assert_eq!(merged2.notes_starting_at_time(0, Some(1)).len(), 1);
     }
 
     #[test]
@@ -521,29 +644,42 @@ mod tests {
         };
 
         // Add a note from time 0 to 32
-        score.insert(Pitch::new(Tone::C, 4), 0, 32);
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 0);
 
         // Test onset
-        let notes_at_0 = score.notes_active_at_time(0);
+        let notes_at_0 = score.notes_active_at_time(0, None);
         assert_eq!(notes_at_0.len(), 1);
         assert_eq!(notes_at_0[0].state, NoteState::Onset);
         assert_eq!(notes_at_0[0].note.pitch, Pitch::new(Tone::C, 4));
+        assert_eq!(notes_at_0[0].note.instrument_id, 0);
 
         // Test sustain
-        let notes_at_16 = score.notes_active_at_time(16);
+        let notes_at_16 = score.notes_active_at_time(16, None);
         assert_eq!(notes_at_16.len(), 1);
         assert_eq!(notes_at_16[0].state, NoteState::Sustain);
         assert_eq!(notes_at_16[0].note.pitch, Pitch::new(Tone::C, 4));
 
         // Test release
-        let notes_at_32 = score.notes_active_at_time(32);
+        let notes_at_32 = score.notes_active_at_time(32, None);
         assert_eq!(notes_at_32.len(), 1);
         assert_eq!(notes_at_32[0].state, NoteState::Release);
         assert_eq!(notes_at_32[0].note.pitch, Pitch::new(Tone::C, 4));
 
         // Test no notes active
-        let notes_at_33 = score.notes_active_at_time(33);
+        let notes_at_33 = score.notes_active_at_time(33, None);
         assert_eq!(notes_at_33.len(), 0);
+        
+        // Add a note for a different instrument
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 1);
+        
+        // Test filtering by instrument
+        let notes_inst0 = score.notes_active_at_time(0, Some(0));
+        assert_eq!(notes_inst0.len(), 1);
+        assert_eq!(notes_inst0[0].note.instrument_id, 0);
+        
+        let notes_inst1 = score.notes_active_at_time(0, Some(1));
+        assert_eq!(notes_inst1.len(), 1);
+        assert_eq!(notes_inst1[0].note.instrument_id, 1);
     }
 
     #[test]
@@ -555,22 +691,38 @@ mod tests {
         };
 
         // Add two overlapping notes of the same pitch
-        score.insert(Pitch::new(Tone::C, 4), 0, 32);
-        score.insert(Pitch::new(Tone::C, 4), 16, 32);
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 0);
+        score.insert(Pitch::new(Tone::C, 4), 16, 32, 0);
 
         // Should be merged into one longer note
-        let notes_at_0 = score.notes_active_at_time(0);
+        let notes_at_0 = score.notes_active_at_time(0, None);
         assert_eq!(notes_at_0.len(), 1);
         assert_eq!(notes_at_0[0].state, NoteState::Onset);
 
-        let notes_at_48 = score.notes_active_at_time(48);
+        let notes_at_48 = score.notes_active_at_time(48, None);
         assert_eq!(notes_at_48.len(), 1);
         assert_eq!(notes_at_48[0].state, NoteState::Release);
 
         // Test that the note persists through the middle
-        let notes_at_24 = score.notes_active_at_time(24);
+        let notes_at_24 = score.notes_active_at_time(24, None);
         assert_eq!(notes_at_24.len(), 1);
         assert_eq!(notes_at_24[0].state, NoteState::Sustain);
+        
+        // Add overlapping notes for a different instrument
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 1);
+        score.insert(Pitch::new(Tone::C, 4), 16, 32, 1);
+        
+        // Now we should have two notes at time 0 (one for each instrument)
+        let all_notes_at_0 = score.notes_active_at_time(0, None);
+        assert_eq!(all_notes_at_0.len(), 2);
+        
+        // Instrument 0 notes should be merged
+        let inst0_notes = score.notes_active_at_time(0, Some(0));
+        assert_eq!(inst0_notes.len(), 1);
+        
+        // Instrument 1 notes should also be merged
+        let inst1_notes = score.notes_active_at_time(0, Some(1));
+        assert_eq!(inst1_notes.len(), 1);
     }
 
     #[test]
@@ -582,18 +734,30 @@ mod tests {
         };
 
         // Add and then remove a note
-        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
         
         // Verify note exists
-        assert_eq!(score.notes_active_at_time(16).len(), 1);
+        assert_eq!(score.notes_active_at_time(16, None).len(), 1);
         
         // Remove the note
-        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32);
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
         
         // Verify note is gone from all time points
-        assert_eq!(score.notes_active_at_time(0).len(), 0);
-        assert_eq!(score.notes_active_at_time(16).len(), 0);
-        assert_eq!(score.notes_active_at_time(32).len(), 0);
+        assert_eq!(score.notes_active_at_time(0, None).len(), 0);
+        assert_eq!(score.notes_active_at_time(16, None).len(), 0);
+        assert_eq!(score.notes_active_at_time(32, None).len(), 0);
+        
+        // Test removing notes by instrument ID
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 1);
+        
+        // Remove instrument 0 note but keep instrument 1 note
+        score.insert_or_remove(Pitch::new(Tone::C, 4), 0, 32, 0);
+        
+        // Verify only instrument 0 note is gone
+        assert_eq!(score.notes_active_at_time(0, None).len(), 1);
+        assert_eq!(score.notes_active_at_time(0, Some(0)).len(), 0);
+        assert_eq!(score.notes_active_at_time(0, Some(1)).len(), 1);
     }
 
     #[test]
@@ -605,10 +769,10 @@ mod tests {
         };
 
         // Add two notes at different pitches at the same time
-        score.insert(Pitch::new(Tone::C, 4), 0, 32);
-        score.insert(Pitch::new(Tone::E, 4), 0, 32);
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 0);
+        score.insert(Pitch::new(Tone::E, 4), 0, 32, 0);
 
-        let notes_at_0 = score.notes_active_at_time(0);
+        let notes_at_0 = score.notes_active_at_time(0, None);
         assert_eq!(notes_at_0.len(), 2);
         assert!(notes_at_0.iter().all(|n| n.state == NoteState::Onset));
         
@@ -616,5 +780,14 @@ mod tests {
         let pitches: Vec<Pitch> = notes_at_0.iter().map(|n| n.note.pitch).collect();
         assert!(pitches.contains(&Pitch::new(Tone::C, 4)));
         assert!(pitches.contains(&Pitch::new(Tone::E, 4)));
+        
+        // Add same pitches for different instrument
+        score.insert(Pitch::new(Tone::C, 4), 0, 32, 1);
+        score.insert(Pitch::new(Tone::E, 4), 0, 32, 1);
+        
+        // Should now have 4 notes (2 for each instrument)
+        assert_eq!(score.notes_active_at_time(0, None).len(), 4);
+        assert_eq!(score.notes_active_at_time(0, Some(0)).len(), 2);
+        assert_eq!(score.notes_active_at_time(0, Some(1)).len(), 2);
     }
 }

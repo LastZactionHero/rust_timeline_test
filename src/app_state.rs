@@ -71,6 +71,7 @@ impl AppState {
             cursor,
             selection_buffer.clone(),
             loop_state,
+            0, // Default instrument ID is 0
         );
 
         AppState {
@@ -236,6 +237,7 @@ impl AppState {
                     self.cursor,
                     self.selection_buffer.clone(),
                     self.loop_state,
+                    0, // Default instrument ID is 0
                 );
                 self.active_gear = Box::new(track_editor);
                 self.active_gear_type = GearType::TrackEditor;

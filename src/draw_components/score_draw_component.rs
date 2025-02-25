@@ -141,7 +141,7 @@ impl ScoreDrawComponent {
             let mut col_states: HashMap<(usize, Pitch), NoteState> = HashMap::new();
 
             for _ in 0..self.score_viewport.resolution.duration_b32() {
-                let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point);
+                let active_notes = self.score.lock().unwrap().notes_active_at_time(time_point, None);
 
                 for (row, pitch) in pitches.iter().enumerate() {
                     if let Some(active_note) =
@@ -164,7 +164,7 @@ impl ScoreDrawComponent {
                 }
 
                 if let SelectionBuffer::Score(ref selection_buffer_score) = self.selection_buffer {
-                    let selected_notes = selection_buffer_score.notes_active_at_time(time_point);
+                    let selected_notes = selection_buffer_score.notes_active_at_time(time_point, None);
                     let selected_notes_map: HashMap<Pitch, ActiveNote> = selected_notes
                         .into_iter()
                         .map(|active_note| (active_note.note.pitch, active_note))
