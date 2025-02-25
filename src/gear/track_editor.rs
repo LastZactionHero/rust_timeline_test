@@ -79,6 +79,7 @@ impl Gear for TrackEditorGear {
                         self.cursor,
                         self.score_viewport,
                         self.loop_state,
+                        self.instrument_id, // Pass instrument_id to StatusBarComponent
                     )),
                 )),
             ),

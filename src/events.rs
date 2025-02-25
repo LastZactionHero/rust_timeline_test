@@ -29,7 +29,8 @@ pub enum InputEvent {
     SetLoopTimes,
     SaveSong,
     SelectIn,
-    SwitchGear(GearType),  // New event for gear switching
+    SwitchGear(GearType),  // Event for gear switching
+    SwitchInstrument,      // New event for instrument switching
 }
 
 pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
@@ -107,9 +108,8 @@ pub fn capture_input(tx: &mpsc::Sender<InputEvent>) -> io::Result<()> {
 
                     // Gear switching (using the Tab key)
                     KeyCode::Tab => {
-                        // For now, we only switch to the track editor, but in the future
-                        // we could implement cycling through available gears
-                        tx.send(InputEvent::SwitchGear(GearType::TrackEditor)).unwrap()
+                        // Send a SwitchInstrument event when Tab is pressed
+                        tx.send(InputEvent::SwitchInstrument).unwrap()
                     }
                     
                     // Playback control

@@ -10,6 +10,7 @@ pub struct StatusBarComponent {
     cursor: Cursor,
     score_viewport: ScoreViewport,
     loop_state: LoopState,
+    instrument_id: u32, // Add instrument ID
 }
 
 impl DrawComponent for StatusBarComponent {
@@ -28,8 +29,8 @@ impl DrawComponent for StatusBarComponent {
         };
 
         let status_str = format!(
-            "{} [Cursor: {}] [Score Viewport: {}]",
-            loop_str, self.cursor, self.score_viewport
+            "{} [Instrument: {}] [Cursor: {}] [Score Viewport: {}]",
+            loop_str, self.instrument_id, self.cursor, self.score_viewport
         );
         self.wb_string(buffer, pos, 0, 0, status_str);
         vec![]
@@ -41,11 +42,13 @@ impl StatusBarComponent {
         cursor: Cursor,
         score_viewport: ScoreViewport,
         loop_state: LoopState,
+        instrument_id: u32, // Add instrument_id parameter
     ) -> StatusBarComponent {
         StatusBarComponent {
             cursor,
             score_viewport,
             loop_state,
+            instrument_id,
         }
     }
 }

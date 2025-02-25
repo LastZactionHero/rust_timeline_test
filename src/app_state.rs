@@ -48,6 +48,7 @@ pub struct AppState {
     song_file: SongFile,
     active_gear: Box<dyn Gear>,
     active_gear_type: GearType,
+    current_instrument_id: u32, // Track the current instrument ID
 }
 
 impl AppState {
@@ -90,6 +91,7 @@ impl AppState {
             song_file: SongFile::new(),
             active_gear: Box::new(track_editor),
             active_gear_type: GearType::TrackEditor,
+            current_instrument_id: 0, // Initialize with instrument 0
         }
     }
 
@@ -131,6 +133,11 @@ impl AppState {
                         InputEvent::SwitchGear(gear_type) => {
                             // We need to dereference and clone the gear_type
                             self.switch_gear((*gear_type).clone());
+                        }
+                        
+                        // Instrument switching
+                        InputEvent::SwitchInstrument => {
+                            self.switch_instrument();
                         }
                                                 
                         // All other events should be passed to the active gear
@@ -237,7 +244,7 @@ impl AppState {
                     self.cursor,
                     self.selection_buffer.clone(),
                     self.loop_state,
-                    0, // Default instrument ID is 0
+                    self.current_instrument_id, // Use current instrument ID
                 );
                 self.active_gear = Box::new(track_editor);
                 self.active_gear_type = GearType::TrackEditor;
@@ -248,5 +255,26 @@ impl AppState {
                 error!("Mixer gear not yet implemented");
             }
         }
+    }
+    
+    /// Switch to the next instrument (cycling through 0-3)
+    pub fn switch_instrument(&mut self) {
+        // Cycle through instruments 0-3
+        self.current_instrument_id = (self.current_instrument_id + 1) % 4;
+        
+        // Create a new TrackEditorGear with the updated instrument ID
+        let track_editor = TrackEditorGear::new(
+            Arc::clone(&self.score),
+            self.score_viewport,
+            Arc::clone(&self.player),
+            self.input_tx.clone(),
+            self.cursor,
+            self.selection_buffer.clone(),
+            self.loop_state,
+            self.current_instrument_id,
+        );
+        
+        // Update the active gear
+        self.active_gear = Box::new(track_editor);
     }
 }
