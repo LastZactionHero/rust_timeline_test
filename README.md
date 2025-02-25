@@ -27,6 +27,7 @@
 - Multi-instrument
 - Score editing
 - Undo
+- Bug: Cursor scrolling past screen is not moving the viewport
 
 ### MS 3: March
 
