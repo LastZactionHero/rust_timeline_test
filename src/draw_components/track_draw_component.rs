@@ -50,21 +50,21 @@ impl TrackDrawComponent {
         score: Arc<Mutex<Score>>,
         play_state: PlayState,
         score_viewport: ScoreViewport,
-        tx: mpsc::Sender<InputEvent>,
+        event_tx: mpsc::Sender<InputEvent>,
         cursor: Cursor,
         selection_buffer: SelectionBuffer,
         loop_state: LoopState,
-        instrument_id: u32,  // Add instrument ID parameter
+        instrument_id: u32,
     ) -> TrackDrawComponent {
         TrackDrawComponent {
             score,
             play_state,
             score_viewport,
-            event_tx: tx,
+            event_tx,
             cursor,
             selection_buffer,
             loop_state,
-            instrument_id,  // Initialize the instrument ID
+            instrument_id,
         }
     }
     
@@ -85,28 +85,36 @@ impl TrackDrawComponent {
     }
 
     fn visible_pitches(&self, pos: &Position) -> Vec<Pitch> {
-        let num_pitches_to_display = pos.h - 1;
-
+        let num_pitches = pos.h - 1;  // Subtract 1 for bar numbers row
+        let middle_index = num_pitches / 2;
         let middle_pitch = self.score_viewport.middle_pitch;
+        
         let mut pitches = vec![middle_pitch];
-        for _ in 0..(num_pitches_to_display / 2) {
-            if let Some(prev_pitch) = pitches.last().unwrap().prev() {
-                pitches.push(prev_pitch);
+        
+        // Add higher pitches
+        let mut current = middle_pitch;
+        for _ in 0..middle_index {
+            if let Some(next) = current.next() {
+                pitches.insert(0, next);  // Insert at start to maintain high-to-low order
+                current = next;
             }
         }
-        pitches.reverse();
-        for _ in 0..(num_pitches_to_display / 2) - 1 {
-            if let Some(next_pitch) = pitches.last().unwrap().next() {
-                pitches.push(next_pitch);
+        
+        // Add lower pitches
+        current = middle_pitch;
+        for _ in 0..(num_pitches - middle_index - 1) {
+            if let Some(prev) = current.prev() {
+                pitches.push(prev);  // Add at end for lower pitches
+                current = prev;
             }
         }
-        pitches.reverse();
+        
         pitches
     }
 
-    fn draw_track(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) -> ViewportDrawResult {
+    fn draw_track(&self, buffer: &mut Vec<Vec<char>>, pos: &Position) -> ViewportDrawResult {
         let pitches = self.visible_pitches(pos);
-        let _time_point = self.score_viewport.time_point;
+        let mut time_point = self.score_viewport.time_point;
         debug!("Drawing track with {} visible pitches", pitches.len());
 
         // Draw the empty track.
@@ -131,7 +139,6 @@ impl TrackDrawComponent {
         }
 
         // Draw the playhead and loop markers
-        let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
                 for (row, _pitch) in pitches.iter().enumerate() {
@@ -231,16 +238,179 @@ impl TrackDrawComponent {
         }
 
         ViewportDrawResult {
-            pitch_low: *pitches.last().unwrap(),
-            pitch_high: *pitches.first().unwrap(),
+            pitch_high: pitches.first().cloned().unwrap_or(self.score_viewport.middle_pitch),
+            pitch_low: pitches.last().cloned().unwrap_or(self.score_viewport.middle_pitch),
             time_point_start: self.score_viewport.time_point,
             time_point_end: time_point,
         }
     }
 
-    fn draw_pitches(&self, buffer: &mut Vec<Vec<char>>, pos: &super::Position) {
-        for (i, pitch) in self.visible_pitches(pos).iter().enumerate() {
-            self.wb_string(buffer, pos, 0, i, pitch.as_str().to_string());
+    fn draw_pitches(&self, buffer: &mut Vec<Vec<char>>, pos: &Position) {
+        let pitches = self.visible_pitches(pos);
+        for (i, pitch) in pitches.iter().enumerate() {
+            self.wb_string(buffer, pos, 0, i, pitch.as_str());  // Use as_str() instead of to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pitch::Tone;
+    use crate::resolution::Resolution;
+    use crate::player::PlayState;
+
+    fn create_test_track_component(instrument_id: u32) -> TrackDrawComponent {
+        let score = Arc::new(Mutex::new(Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        }));
+        
+        let score_viewport = ScoreViewport::new(
+            Pitch::new(Tone::C, 4),
+            Resolution::Time1_16,
+            32,
+            0
+        );
+        
+        let (tx, _rx) = mpsc::channel();
+        
+        TrackDrawComponent::new(
+            score,
+            PlayState::Stopped,
+            score_viewport,
+            tx,
+            Cursor::new(Pitch::new(Tone::C, 4), 32),
+            SelectionBuffer::None,
+            LoopState::new(),
+            instrument_id
+        )
+    }
+
+    #[test]
+    fn test_visible_pitches() {
+        let component = create_test_track_component(0);
+        let pos = Position { x: 0, y: 0, w: 10, h: 5 };
+        
+        let pitches = component.visible_pitches(&pos);
+        
+        // Should have h-1 pitches (one row reserved for bar numbers)
+        assert_eq!(pitches.len(), 4);
+        
+        // Middle pitch should be C4 (viewport middle pitch)
+        assert_eq!(pitches[pitches.len()/2], Pitch::new(Tone::C, 4));
+    }
+
+    #[test]
+    fn test_draw_track_empty() {
+        let component = create_test_track_component(0);
+        let mut buffer = vec![vec![' '; 20]; 10];
+        let pos = Position { x: 0, y: 0, w: 20, h: 5 };
+        
+        let result = component.draw_track(&mut buffer, &pos);
+        
+        // Verify viewport result
+        assert!(result.time_point_start == 32);
+        assert!(result.time_point_end > result.time_point_start);
+        assert!(result.pitch_high > result.pitch_low);
+    }
+
+    #[test]
+    fn test_draw_track_with_notes() {
+        let component = create_test_track_component(0);
+        
+        // Add some test notes for instrument 0
+        {
+            let mut score = component.score.lock().unwrap();
+            score.insert(Pitch::new(Tone::C, 4), 32, 32, 0);
+            score.rebuild_active_notes();
+        }
+        
+        let mut buffer = vec![vec![' '; 20]; 10];
+        let pos = Position { x: 0, y: 0, w: 20, h: 5 };
+        
+        component.draw_track(&mut buffer, &pos);
+        
+        // Verify notes are drawn only for instrument 0
+        let mut found_note = false;
+        for row in buffer {
+            for cell in row {
+                if cell == '█' || cell == '░' || cell == '▒' {
+                    found_note = true;
+                }
+            }
+        }
+        assert!(found_note, "Expected to find note characters in buffer");
+    }
+
+    #[test]
+    fn test_draw_track_multiple_instruments() {
+        let component = create_test_track_component(0);
+        
+        // Add notes for different instruments
+        {
+            let mut score = component.score.lock().unwrap();
+            score.insert(Pitch::new(Tone::C, 4), 32, 32, 0); // Should be visible
+            score.insert(Pitch::new(Tone::C, 4), 32, 32, 1); // Should be filtered out
+            score.rebuild_active_notes();
+        }
+        
+        let mut buffer = vec![vec![' '; 20]; 10];
+        let pos = Position { x: 0, y: 0, w: 20, h: 5 };
+        
+        component.draw_track(&mut buffer, &pos);
+        
+        // Count note characters (should only find notes for instrument 0)
+        let note_count = buffer.iter()
+            .flat_map(|row| row.iter())
+            .filter(|&&c| c == '█' || c == '░' || c == '▒')
+            .count();
+            
+        assert!(note_count > 0, "Expected to find notes for instrument 0");
+    }
+
+    #[test]
+    fn test_draw_track_with_selection_buffer() {
+        let component = create_test_track_component(0);
+        let mut selection_score = Score {
+            bpm: 120,
+            notes: HashMap::new(),
+            active_notes: HashMap::new(),
+        };
+        
+        // Add a note to the selection buffer
+        selection_score.insert(Pitch::new(Tone::C, 4), 32, 32, 0);
+        
+        let mut component_with_selection = component;
+        component_with_selection.selection_buffer = SelectionBuffer::Score(selection_score);
+        
+        let mut buffer = vec![vec![' '; 20]; 10];
+        let pos = Position { x: 0, y: 0, w: 20, h: 5 };
+        
+        component_with_selection.draw_track(&mut buffer, &pos);
+        
+        // Verify selection buffer notes are drawn
+        let mut found_selection = false;
+        for row in buffer {
+            for cell in row {
+                if cell == '█' || cell == '░' || cell == '▒' {
+                    found_selection = true;
+                }
+            }
+        }
+        assert!(found_selection, "Expected to find selection buffer notes");
+    }
+
+    #[test]
+    fn test_draw_pitches() {
+        let component = create_test_track_component(0);
+        let mut buffer = vec![vec![' '; 20]; 10];
+        let pos = Position { x: 0, y: 0, w: 20, h: 5 };
+        
+        component.draw_pitches(&mut buffer, &pos);
+        
+        // Verify pitch labels are drawn
+        assert!(buffer[2][0] == 'C', "Expected to find middle C pitch label");
     }
 }

@@ -162,3 +162,152 @@ impl PartialOrd for Pitch {
         Some(Ordering::Equal)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn test_tone_from_index() {
+        assert_eq!(Tone::from_index(0), Tone::C);
+        assert_eq!(Tone::from_index(1), Tone::Cs);
+        assert_eq!(Tone::from_index(2), Tone::D);
+        assert_eq!(Tone::from_index(11), Tone::B);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid tone index")]
+    fn test_tone_from_index_invalid() {
+        Tone::from_index(12); // Should panic
+    }
+
+    #[test]
+    fn test_tone_index() {
+        assert_eq!(Tone::C.index(), 0);
+        assert_eq!(Tone::Cs.index(), 1);
+        assert_eq!(Tone::D.index(), 2);
+        assert_eq!(Tone::B.index(), 11);
+    }
+
+    #[test]
+    fn test_tone_as_str() {
+        assert_eq!(Tone::C.as_str(), "C");
+        assert_eq!(Tone::Cs.as_str(), "C#");
+        assert_eq!(Tone::D.as_str(), "D");
+        assert_eq!(Tone::B.as_str(), "B");
+    }
+
+    #[test]
+    fn test_pitch_new() {
+        let p = Pitch::new(Tone::C, 4);
+        assert_eq!(p.tone, Tone::C);
+        assert_eq!(p.octave, 4);
+
+        let p2 = Pitch::new(Tone::A, 5);
+        assert_eq!(p2.tone, Tone::A);
+        assert_eq!(p2.octave, 5);
+    }
+
+    #[test]
+    fn test_pitch_next() {
+        // Same octave
+        let p1 = Pitch::new(Tone::C, 4);
+        let p2 = p1.next().unwrap();
+        assert_eq!(p2.tone, Tone::Cs);
+        assert_eq!(p2.octave, 4);
+
+        // Octave transition
+        let p3 = Pitch::new(Tone::B, 4);
+        let p4 = p3.next().unwrap();
+        assert_eq!(p4.tone, Tone::C);
+        assert_eq!(p4.octave, 5);
+
+        // Upper limit
+        let high_pitch = Pitch::new(Tone::B, OCTAVE_MAX);
+        assert!(high_pitch.next().is_none());
+    }
+
+    #[test]
+    fn test_pitch_prev() {
+        // Same octave
+        let p1 = Pitch::new(Tone::D, 4);
+        let p2 = p1.prev().unwrap();
+        assert_eq!(p2.tone, Tone::Cs);
+        assert_eq!(p2.octave, 4);
+
+        // Octave transition
+        let p3 = Pitch::new(Tone::C, 4);
+        let p4 = p3.prev().unwrap();
+        assert_eq!(p4.tone, Tone::B);
+        assert_eq!(p4.octave, 3);
+
+        // Lower limit
+        let low_pitch = Pitch::new(Tone::C, 0);
+        assert!(low_pitch.prev().is_none());
+    }
+
+    #[test]
+    fn test_pitch_frequency() {
+        // A4 = 440Hz standard
+        let p = Pitch::new(Tone::A, 4);
+        assert!((p.frequency(4) - 440.0).abs() < 0.01);
+
+        // C4 (middle C) should be around 261.63 Hz
+        let middle_c = Pitch::new(Tone::C, 4);
+        assert!((middle_c.frequency(4) - 261.63).abs() < 0.01);
+
+        // Octave higher should double the frequency
+        let c5 = Pitch::new(Tone::C, 5);
+        assert!((c5.frequency(5) - 523.25).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_pitch_as_str() {
+        assert_eq!(Pitch::new(Tone::C, 4).as_str(), "C4");
+        assert_eq!(Pitch::new(Tone::Fs, 5).as_str(), "F#5");
+        assert_eq!(Pitch::new(Tone::B, 3).as_str(), "B3");
+    }
+
+    #[test]
+    fn test_pitch_all() {
+        let all_pitches = Pitch::all();
+        assert!(!all_pitches.is_empty());
+        
+        // Check expected length (OCTAVE_MAX + 1 octaves * 12 tones)
+        assert_eq!(all_pitches.len(), ((OCTAVE_MAX + 1) * 12) as usize);
+        
+        // Check some expected pitches in the sequence
+        assert!(all_pitches.contains(&Pitch::new(Tone::C, 1)));
+        assert!(all_pitches.contains(&Pitch::new(Tone::G, 4)));
+        assert!(all_pitches.contains(&Pitch::new(Tone::B, 7)));
+    }
+
+    #[test]
+    fn test_pitch_comparison() {
+        let p1 = Pitch::new(Tone::C, 4);
+        let p2 = Pitch::new(Tone::D, 4);
+        let p3 = Pitch::new(Tone::C, 5);
+        
+        // Same octave, different tones
+        assert_eq!(p1.partial_cmp(&p2), Some(Ordering::Less));
+        assert_eq!(p2.partial_cmp(&p1), Some(Ordering::Greater));
+        
+        // Different octaves
+        assert_eq!(p1.partial_cmp(&p3), Some(Ordering::Less));
+        assert_eq!(p3.partial_cmp(&p1), Some(Ordering::Greater));
+        
+        // Same pitch
+        let p4 = Pitch::new(Tone::C, 4);
+        assert_eq!(p1.partial_cmp(&p4), Some(Ordering::Equal));
+    }
+    
+    #[test]
+    fn test_pitch_display() {
+        let p = Pitch::new(Tone::C, 4);
+        assert_eq!(format!("{}", p), "C4");
+        
+        let p2 = Pitch::new(Tone::Fs, 5);
+        assert_eq!(format!("{}", p2), "F#5");
+    }
+}

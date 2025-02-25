@@ -3,6 +3,7 @@ use crate::cursor::Cursor;
 use crate::draw_components::Position;
 use crate::score_viewport::ScoreViewport;
 use crate::loop_state::{LoopState, LoopMode};
+use crate::resolution::Resolution;
 
 pub struct StatusBarComponent {
     cursor: Cursor,
