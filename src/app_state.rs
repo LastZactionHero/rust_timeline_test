@@ -2,18 +2,15 @@
 use crate::audio::audio_player;
 use crate::cursor::Cursor;
 use crate::draw_components::ViewportDrawResult;
-use crate::gear::{Gear, GearType, TrackEditorGear, ScoreEditorGear};
+use crate::draw_components::{DrawComponent, DrawResult, Position, Window};
+use crate::gear::{Gear, GearType, ScoreEditorGear, TrackEditorGear};
 use crate::loop_state::LoopState;
 use crate::pitch::{Pitch, Tone};
 use crate::player::Player;
 use crate::resolution::Resolution;
 use crate::score::Score;
 use crate::score_viewport::ScoreViewport;
-use crate::{
-    draw_components::{
-        DrawComponent, DrawResult, Position, Window,
-    },
-};
+use crate::song_file::SongFile;
 use crate::{
     events::{capture_input, InputEvent},
     selection_buffer::SelectionBuffer,
@@ -24,12 +21,11 @@ use crossterm::{
     terminal::{self, ClearType},
     ExecutableCommand, QueueableCommand,
 };
+use log::error;
 use std::io::{self, Write};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use crate::song_file::SongFile;
-use log::error;
 
 pub struct AppState {
     score: Arc<Mutex<Score>>,
@@ -56,12 +52,12 @@ impl AppState {
 
         let player = Player::create(Arc::clone(&score), 44100);
         let shared_player = Arc::new(Mutex::new(player));
-        
+
         let score_viewport = ScoreViewport::new(Pitch::new(Tone::C, 4), Resolution::Time1_16, 0, 0);
         let cursor = Cursor::new(Pitch::new(Tone::C, 4), 0);
         let selection_buffer = SelectionBuffer::None;
         let loop_state = LoopState::new();
-        
+
         // Initialize the track editor gear as the default active gear
         let track_editor = TrackEditorGear::new(
             Arc::clone(&score),
@@ -127,48 +123,54 @@ impl AppState {
                     // First check for app-level events that should always be handled here
                     match &msg {
                         InputEvent::Quit => break,
-                        
+
                         // Gear switching
                         InputEvent::SwitchGear(gear_type) => {
                             // We need to dereference and clone the gear_type
                             self.switch_gear((*gear_type).clone());
                         }
-                        
+
                         // Instrument switching
                         InputEvent::SwitchInstrument => {
                             self.switch_instrument();
                         }
-                                                
+
                         // All other events should be passed to the active gear
                         _ => {
                             // If the active gear doesn't handle the event, the score editor gear will handle it
                             let event_handled = self.active_gear.handle_event(&msg);
-                            
+
                             // For specific events that modify the score, ensure we rebuild active_notes
                             if event_handled {
                                 match &msg {
-                                    InputEvent::Paste | InputEvent::Cut | InputEvent::Delete | InputEvent::InsertNote => {
+                                    InputEvent::Paste
+                                    | InputEvent::Cut
+                                    | InputEvent::Delete
+                                    | InputEvent::InsertNote => {
                                         // Ensure the active_notes are up to date
                                         self.score.lock().unwrap().rebuild_active_notes();
                                     }
                                     _ => {}
                                 }
                             }
-                            
+
                             // If the gear handles the event, we need to sync up our app state with the gear's internal state
                             // If an event was handled, we need to make sure the app state is consistent with the gear state
                             if event_handled {
                                 // Update app state with gear state when appropriate
                                 match &msg {
-                                    InputEvent::CursorRight | InputEvent::CursorLeft | InputEvent::CursorUp | InputEvent::CursorDown => {
+                                    InputEvent::CursorRight
+                                    | InputEvent::CursorLeft
+                                    | InputEvent::CursorUp
+                                    | InputEvent::CursorDown => {
                                         // We'll handle this when we get the viewport draw result in the draw method
-                                    },
+                                    }
                                     _ => {}
                                 }
                             }
                         }
                     }
-                    
+
                     self.draw()?;
                 }
                 Err(e) => {
@@ -193,23 +195,27 @@ impl AppState {
         // This ensures that when cursor scrolls beyond the visible area, the app state cursor is updated
         match self.active_gear_type {
             GearType::TrackEditor => {
-                if let Some(track_editor) = self.active_gear.as_any().downcast_ref::<TrackEditorGear>() {
+                if let Some(track_editor) =
+                    self.active_gear.as_any().downcast_ref::<TrackEditorGear>()
+                {
                     self.cursor = track_editor.cursor();
                     self.score_viewport = track_editor.viewport();
                 }
-            },
+            }
             GearType::ScoreEditor => {
-                if let Some(score_editor) = self.active_gear.as_any().downcast_ref::<ScoreEditorGear>() {
+                if let Some(score_editor) =
+                    self.active_gear.as_any().downcast_ref::<ScoreEditorGear>()
+                {
                     self.cursor = score_editor.cursor();
                     self.score_viewport = score_editor.viewport();
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
-        
+
         // Get the active gear's draw component
         let gear_component = self.active_gear.get_draw_component();
-        
+
         // Create the base component
         let base_component = Window::new(vec![gear_component]);
 
@@ -225,10 +231,11 @@ impl AppState {
                 DrawResult::ViewportDrawResult(viewport_draw_result) => {
                     // Store the viewport draw result in AppState
                     self.viewport_draw_result = Some(viewport_draw_result);
-                    
+
                     // Also pass it to the active gear
-                    self.active_gear.set_viewport_draw_result(viewport_draw_result);
-                    
+                    self.active_gear
+                        .set_viewport_draw_result(viewport_draw_result);
+
                     let player = self.player.lock().unwrap();
                     if player.is_playing()
                         && (player.current_time_b32() < viewport_draw_result.time_point_start
@@ -237,7 +244,7 @@ impl AppState {
                         let new_time = player.current_time_b32() - player.current_time_b32() % 32;
                         self.score_viewport = self.score_viewport.set_time_point(new_time);
                     }
-                    
+
                     // Cursor viewport adjustment is now handled in the gear implementations
                 }
             }
@@ -260,7 +267,7 @@ impl AppState {
         self.buffer = Some(buffer);
         Ok(())
     }
-    
+
     /// Switch to the specified gear type
     pub fn switch_gear(&mut self, gear_type: GearType) {
         match gear_type {
@@ -277,7 +284,7 @@ impl AppState {
                 );
                 self.active_gear = Box::new(track_editor);
                 self.active_gear_type = GearType::TrackEditor;
-                
+
                 // After switching, update the selection buffer from the gear
                 self.update_selection_buffer_from_gear();
             }
@@ -293,7 +300,7 @@ impl AppState {
                 );
                 self.active_gear = Box::new(score_editor);
                 self.active_gear_type = GearType::ScoreEditor;
-                
+
                 // After switching, update the selection buffer from the gear
                 self.update_selection_buffer_from_gear();
             }
@@ -304,14 +311,14 @@ impl AppState {
             }
         }
     }
-    
+
     /// Helper method to update the AppState's selection buffer from the active gear
     fn update_selection_buffer_from_gear(&mut self) {
         // For now, we just need to make sure we rebuild active_notes
         // We could extend this in the future to sync more state between gear and app
         self.score.lock().unwrap().rebuild_active_notes();
     }
-    
+
     /// Switch to the next instrument or score editor (cycling through instruments 0-3, then score editor)
     pub fn switch_instrument(&mut self) {
         // Cycle through instruments 0-3, then switch to score editor
@@ -319,7 +326,7 @@ impl AppState {
             // If we're in the score editor, go back to instrument 0
             self.current_instrument_id = 0;
             self.active_gear_type = GearType::TrackEditor;
-            
+
             // Create a new TrackEditorGear
             let track_editor = TrackEditorGear::new(
                 Arc::clone(&self.score),
@@ -331,20 +338,20 @@ impl AppState {
                 self.loop_state,
                 self.current_instrument_id,
             );
-            
+
             // Update the active gear
             self.active_gear = Box::new(track_editor);
-            
+
             // After switching, update the selection buffer from the gear
             self.update_selection_buffer_from_gear();
         } else {
             // We're in track editor mode
             self.current_instrument_id = (self.current_instrument_id + 1) % 4;
-            
+
             if self.current_instrument_id == 0 {
                 // After cycling through all instruments, switch to score editor
                 self.active_gear_type = GearType::ScoreEditor;
-                
+
                 // Create a new ScoreEditorGear
                 let score_editor = ScoreEditorGear::new(
                     Arc::clone(&self.score),
@@ -355,10 +362,10 @@ impl AppState {
                     self.selection_buffer.clone(),
                     self.loop_state,
                 );
-                
+
                 // Update the active gear
                 self.active_gear = Box::new(score_editor);
-                
+
                 // After switching, update the selection buffer from the gear
                 self.update_selection_buffer_from_gear();
             } else {
@@ -373,10 +380,10 @@ impl AppState {
                     self.loop_state,
                     self.current_instrument_id,
                 );
-                
+
                 // Update the active gear
                 self.active_gear = Box::new(track_editor);
-                
+
                 // After switching, update the selection buffer from the gear
                 self.update_selection_buffer_from_gear();
             }

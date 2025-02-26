@@ -1,16 +1,16 @@
-use crate::pitch::Pitch;
-use std::sync::{mpsc, Arc, Mutex};
 use crate::cursor::Cursor;
 use crate::events::InputEvent;
+use crate::loop_state::{LoopMode, LoopState};
+use crate::pitch::Pitch;
 use crate::player::PlayState;
 use crate::score::{ActiveNote, NoteState, Score};
 use crate::score_viewport::ScoreViewport;
 use crate::selection_buffer::SelectionBuffer;
-use crate::loop_state::{LoopState, LoopMode};
+use std::sync::{mpsc, Arc, Mutex};
 
-pub mod score_draw_component;  // Keep this for backward compatibility for now
-pub mod track_draw_component;  // New module for track editing
+pub mod score_draw_component; // Keep this for backward compatibility for now
 pub mod status_bar_component;
+pub mod track_draw_component; // New module for track editing
 
 #[derive(Clone, Copy)]
 pub struct ViewportDrawResult {
@@ -88,35 +88,17 @@ impl ScoreViewDrawComponent {
         }
     }
 
-    // Draw the empty grid with bar lines and time markers
-    pub fn draw_grid(&self, buffer: &mut Vec<Vec<char>>, pos: &Position, pitches: &Vec<Pitch>) {
-        for col in 0..pos.w - 1 {
-            let bar_col = col % (self.score_viewport.resolution.bar_length_in_beats()) == 0;
-            for (row, _pitch) in pitches.iter().enumerate() {
-                let draw_char = if bar_col { '⎸' } else { '.' };
-                self.wb(buffer, pos, col, row, draw_char);
-            }
-
-            if bar_col {
-                let time_point_at_col = self.score_viewport.time_point
-                    + (col as u64) * self.score_viewport.resolution.duration_b32();
-                self.wb_string(
-                    buffer,
-                    pos,
-                    col,
-                    pitches.len(),
-                    (time_point_at_col / (32)).to_string(),
-                );
-            }
-        }
-    }
-
     // Draw the playhead and loop markers
-    pub fn draw_playhead(&self, buffer: &mut Vec<Vec<char>>, pos: &Position, pitches: &Vec<Pitch>) -> u64 {
+    pub fn draw_playhead(
+        &self,
+        buffer: &mut Vec<Vec<char>>,
+        pos: &Position,
+        num_rows: usize,
+    ) -> u64 {
         let mut time_point = self.score_viewport.time_point;
         for col in 0..pos.w - 1 {
             for _ in 0..self.score_viewport.resolution.duration_b32() {
-                for (row, _pitch) in pitches.iter().enumerate() {
+                for row in 0..num_rows {
                     if time_point == self.score_viewport.playback_time_point {
                         self.wb(buffer, pos, col, row, '░');
                     } else if self.loop_state.mode == LoopMode::Looping {
@@ -137,26 +119,6 @@ impl ScoreViewDrawComponent {
             }
         }
         time_point
-    }
-
-    // Draw the cursor
-    pub fn draw_cursor(&self, buffer: &mut Vec<Vec<char>>, pos: &Position, pitches: &Vec<Pitch>) {
-        let mut time_point = self.score_viewport.time_point;
-        for col in 0..pos.w - 1 {
-            for (row, pitch) in pitches.iter().enumerate() {
-                if self.cursor.visible_at(*pitch, time_point) {
-                    self.wb(buffer, pos, col, row, 'C');
-                }
-            }
-            time_point += self.score_viewport.resolution.duration_b32();
-        }
-    }
-
-    // Draw the pitch labels
-    pub fn draw_pitches(&self, buffer: &mut Vec<Vec<char>>, pos: &Position, pitches: &Vec<Pitch>) {
-        for (i, pitch) in pitches.iter().enumerate() {
-            self.wb_string(buffer, pos, 0, i, pitch.as_str());
-        }
     }
 }
 
