@@ -25,7 +25,10 @@
 - X Load file
 - Promo
 - X Multi-instrument
-- X Score editing
+- Score Viewer
+  - X Score Display
+  - Score Cursor
+  - Score Editing
 - Undo
 
 ### MS 3: March
